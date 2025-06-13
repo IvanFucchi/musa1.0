@@ -1,66 +1,72 @@
-import dotenv from 'dotenv';
+import 'dotenv/config';
+import fetch from 'node-fetch';
+import https from 'https';
 
-dotenv.config();
+const API_URL = 'https://api.openai.com/v1/chat/completions';
+const OPENAI_KEY = process.env.OPENAI_API_KEY;
 
-export const aiGeneratedSpots = async (query) => {
+// agente HTTPS connessioni keep-alive
+const httpsAgent = new https.Agent({keepAlive: true});
 
-  const {place, activity} = query
-  console.log('-------------> OAI: ', place, activity)
+const SYSTEM_MESSAGE = {
+  role: 'system',
+  content: "Sei un esperto d'arte e cultura che conosce il luogo in dettaglio."
+};
 
-  let prompt = `Genera 5 spot artistici a ${place} basati sulla query: "${activity}". `;
+const PROMPT_TEMPLATE = `
+Genera 5 spot artistici a {PLACE} basati sulla query: "{ACTIVITY}". 
+Formatta i risultati come un array JSON con i seguenti campi per ogni spot:
+  - title (nome dello spot)
+  - description (descrizione dettagliata)
+  - type (artwork, venue o event)
+  - coordinates (array [longitudine, latitudine])
+  - address (indirizzo completo)
+  - city (città)
+  - country (paese)
+Imposta sempre source a "openai".
+`;
 
-  prompt += ` 
-    Formatta i risultati come un array JSON con i seguenti campi per ogni spot: 
-    title (nome dello spot), 
-    description (descrizione dettagliata), 
-    imageUrl (url di un immagine dello spot), 
-    url (url dello spot)
-    type (artwork, venue, o event), 
-    coordinates (array [longitudine, latitudine]), 
-    address (indirizzo completo), 
-    city (città), 
-    country (paese), 
-    category (categoria dell'opera o del luogo), 
-    tags (array di tag pertinenti).
-    Ogni spot deve avere il campo source impostato a "openai".
-  `;
+export const aiGeneratedSpots = async ({place, activity}) => {
+  const userPrompt = PROMPT_TEMPLATE
+    .replace('{PLACE}', place)
+    .replace('{ACTIVITY}', activity);
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        {role: 'system', content: 'Sei un esperto d\'arte e cultura che conosce Roma in dettaglio.'},
-        {role: 'user', content: prompt}
-      ],
-      temperature: 0.7
-    })
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    console.error('Errore nella chiamata a OpenAI:', data);
+  let res;
+  try {
+    res = await fetch(API_URL, {
+      method: 'POST',
+      agent: httpsAgent,
+      headers: {
+        'Authorization': `Bearer ${OPENAI_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-3.5-turbo',
+        messages: [SYSTEM_MESSAGE, {role: 'user', content: userPrompt}],
+        temperature: 0.7
+      })
+    });
+  } catch (err) {
+    console.error('Errore di rete:', err);
     return [];
   }
 
-  const rispostaTestuale = data.choices[0].message.content;
-  const jsonPulito = rispostaTestuale.replace(/```json|```/g, '').trim();
+  if (!res.ok) {
+    const errText = await res.text().catch(() => res.statusText);
+    console.error('Errore OpenAI:', errText);
+    return [];
+  }
+
+  const {choices} = await res.json();
+  const raw = choices?.[0]?.message?.content?.trim() ?? '';
+  const clean = raw.replace(/```json|```/g, '');
 
   try {
-    const datiJson = JSON.parse(jsonPulito);
-    // console.log('JSON parsato:', datiJson);
-    console.log('JSON risposta');
-    return datiJson;
-  } catch (errore) {
-    console.error('Errore nel parsing del JSON:', errore);
+    return JSON.parse(clean);
+  } catch (err) {
+    console.error('JSON parsing error:', err, '\nRaw content:', clean);
+    return [];
   }
 };
 
-export default {
-  aiGeneratedSpots
-};
+export default {aiGeneratedSpots};
