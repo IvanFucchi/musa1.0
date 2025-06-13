@@ -10,6 +10,7 @@ const ExplorePage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [pinsData, setPinsData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const backendUrl =  process.env.REACT_APP_BACKEND_PATH || "http://localhost:5000";
 
   useEffect(() => {
     const p = searchParams.get("place");
@@ -35,7 +36,7 @@ const ExplorePage = () => {
       setIsLoading(true);
       try {
         const res = await fetch(
-          `http://localhost:5000/api/spots?place=${encodeURIComponent(
+          `${backendUrl}/api/spots?place=${encodeURIComponent(
             place
           )}&activity=${encodeURIComponent(activity)}`
         );
