@@ -34,10 +34,10 @@ export const GlobalProvider = ({children}) => {
     if (placeParam && activityParam) {
       dispatch({type: 'SET_PLACE', payload: placeParam});
       dispatch({type: 'SET_ACTIVITY', payload: activityParam});
-      console.log('Search submitted (initial):', {
-        place: placeParam,
-        activity: activityParam,
-      });
+      // console.log('Search submitted (initial):', {
+      //   place: placeParam,
+      //   activity: activityParam,
+      // });
     }
   }, [location.search]);
 

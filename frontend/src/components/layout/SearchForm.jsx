@@ -1,10 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useGlobalState, useGlobalDispatch } from '@/context/GlobalState';
-import { MagnifyingGlassIcon } from '@heroicons/react/24/solid';
+import React, {useState, useRef, useEffect} from 'react';
+import {useNavigate, useLocation} from 'react-router-dom';
+import {useGlobalState, useGlobalDispatch} from '@/context/GlobalState';
+import {MagnifyingGlassIcon} from '@heroicons/react/24/solid';
 
 const SearchForm = () => {
-  const { place: globalPlace, activity: globalActivity } = useGlobalState();
+  const {place: globalPlace, activity: globalActivity} = useGlobalState();
   const dispatch = useGlobalDispatch();
   const navigate = useNavigate();
   const location = useLocation();
@@ -16,7 +16,7 @@ const SearchForm = () => {
   const activityRef = useRef(null);
 
   useEffect(() => {
-    if (location.pathname === '/explore') {
+    if (location.pathname.startsWith('/explore')) {
       setPlaceInput(globalPlace || '');
       setActivityInput(globalActivity || '');
     } else {
@@ -25,14 +25,20 @@ const SearchForm = () => {
     }
   }, [location.pathname, globalPlace, globalActivity]);
 
+  useEffect(() => {
+    if (location.pathname.startsWith('/explore')) {
+      window.scrollTo({top: 0, behavior: 'smooth'});
+    }
+  }, [location.pathname]);
+
   const isValid = placeInput.trim() !== '' && activityInput.trim() !== '';
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!isValid) return;
 
-    dispatch({ type: 'SET_PLACE', payload: placeInput.trim() });
-    dispatch({ type: 'SET_ACTIVITY', payload: activityInput.trim() });
+    dispatch({type: 'SET_PLACE', payload: placeInput.trim()});
+    dispatch({type: 'SET_ACTIVITY', payload: activityInput.trim()});
 
     placeRef.current?.blur();
     activityRef.current?.blur();
@@ -72,7 +78,7 @@ const SearchForm = () => {
           className="px-4 py-2 bg-zinc-950 text-white rounded hover:bg-zinc-700"
           disabled={!isValid}
         >
-          <MagnifyingGlassIcon className="h-5 w-5" />
+          <MagnifyingGlassIcon className="h-5 w-5"/>
         </button>
       </div>
     </form>
