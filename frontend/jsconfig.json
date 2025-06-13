@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "baseUrl": "src",
+    "paths": {
+      "@/*": ["*"],
+      "components/*": ["components/*"],
+      "ui/*": ["components/shad-ui/*"],
+      "shad-ui/*": ["components/shad-ui/*"],
+      "lib/*": ["lib/*"]
+    }
+  },
+  "include": ["src"]
+}
