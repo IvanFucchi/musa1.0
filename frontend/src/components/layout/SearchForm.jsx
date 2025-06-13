@@ -1,38 +1,39 @@
-import React, {useState, useRef, useEffect} from 'react';
-import {useNavigate} from 'react-router-dom';
-import {useGlobalState, useGlobalDispatch} from '@/context/GlobalState';
-import {MagnifyingGlassIcon} from '@heroicons/react/24/solid'
+import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useGlobalState, useGlobalDispatch } from '@/context/GlobalState';
+import { MagnifyingGlassIcon } from '@heroicons/react/24/solid';
 
 const SearchForm = () => {
-  const {place: globalPlace, activity: globalActivity} = useGlobalState();
+  const { place: globalPlace, activity: globalActivity } = useGlobalState();
   const dispatch = useGlobalDispatch();
-  const [placeInput, setPlaceInput] = useState(globalPlace);
-  const [activityInput, setActivityInput] = useState(globalActivity);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const [placeInput, setPlaceInput] = useState('');
+  const [activityInput, setActivityInput] = useState('');
+
   const placeRef = useRef(null);
   const activityRef = useRef(null);
 
-  // sync initial global values
   useEffect(() => {
-    setPlaceInput(globalPlace);
-    setActivityInput(globalActivity);
-  }, [globalPlace, globalActivity]);
+    if (location.pathname === '/explore') {
+      setPlaceInput(globalPlace || '');
+      setActivityInput(globalActivity || '');
+    } else {
+      setPlaceInput('');
+      setActivityInput('');
+    }
+  }, [location.pathname, globalPlace, globalActivity]);
 
   const isValid = placeInput.trim() !== '' && activityInput.trim() !== '';
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!isValid) return;
-    dispatch({type: 'SET_PLACE', payload: placeInput.trim()});
-    dispatch({type: 'SET_ACTIVITY', payload: activityInput.trim()});
 
-    // Debug log on submit
-    // console.log('Search submitted:', {
-    //   place: placeInput.trim(),
-    //   activity: activityInput.trim(),
-    // });
+    dispatch({ type: 'SET_PLACE', payload: placeInput.trim() });
+    dispatch({ type: 'SET_ACTIVITY', payload: activityInput.trim() });
 
-    // blur inputs
     placeRef.current?.blur();
     activityRef.current?.blur();
 
@@ -71,7 +72,7 @@ const SearchForm = () => {
           className="px-4 py-2 bg-zinc-950 text-white rounded hover:bg-zinc-700"
           disabled={!isValid}
         >
-          <MagnifyingGlassIcon className="size-4" />
+          <MagnifyingGlassIcon className="h-5 w-5" />
         </button>
       </div>
     </form>
