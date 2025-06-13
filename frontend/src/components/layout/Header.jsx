@@ -42,12 +42,12 @@ export default function Header({handleTextSearch, handleLocationSearch}) {
           */}
         </div>
         <div className='col-span-6 md:col-span-3 xl:col-span-4 flex justify-end items-center'>
-          <ul className={"flex items-center space-x-3 lg:space-x-6"}>
-            <li className='hidden lg:block'>
+          <ul className={"flex items-center space-x-4 lg:space-x-6"}>
+            <li>
               <Link to="/">Home</Link>
             </li>
-            <li className='hidden lg:block'>
-              <Link to="/explore">Esplora</Link>
+            <li>
+              <Link to="/explore?place=roma&activity=arte">Esplora</Link>
             </li>
             {!isAuthenticated &&
               <li>

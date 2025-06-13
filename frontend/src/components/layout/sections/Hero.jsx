@@ -23,7 +23,7 @@ const Hero = () => {
               preferenze musicali, per offrirti percorsi su misura, consigli mirati e opportunità uniche di immergerti nell’arte e nella cultura.
             </p>
             <div className="flex flex-wrap gap-4">
-              <Link to="/explore" className="py-3 px-6 font-semibold rounded bg-white shadow hover:bg-zinc-200">Inizia ad esplorare</Link>
+              <Link to="/explore?place=roma&activity=arte" className="py-3 px-6 font-semibold rounded bg-white shadow hover:bg-zinc-200">Inizia ad esplorare</Link>
             </div>
           </div>
         </div>
