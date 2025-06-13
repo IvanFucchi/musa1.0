@@ -14,10 +14,11 @@ const SYSTEM_MESSAGE = {
 };
 
 const PROMPT_TEMPLATE = `
-Genera 5 spot artistici a {PLACE} basati sulla query: "{ACTIVITY}". 
+Genera 10 spot artistici a {PLACE} basati sulla query: "{ACTIVITY}". 
 Formatta i risultati come un array JSON con i seguenti campi per ogni spot:
   - title (nome dello spot)
   - description (descrizione dettagliata)
+  - imageUrl (url dell'immagine dello spot reale da fonti open source)
   - type (artwork, venue o event)
   - coordinates (array [longitudine, latitudine])
   - address (indirizzo completo)

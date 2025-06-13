@@ -1,14 +1,40 @@
+import React from 'react';
+
 const MapPinList = ({pinsData}) => {
-  if (!Array.isArray(pinsData)) return null;
+  if (!Array.isArray(pinsData) || pinsData.length === 0) {
+    return <p className="p-4 text-gray-500">Nessuno spot da mostrare.</p>;
+  }
 
   return (
-    <div>
-      {pinsData.map((pin, i) => (
-        <div key={i}>
-          <p>{pin.title}</p>
-        </div>
-      ))}
+    <div className="overflow-y-auto md:pe-6 grid grid-cols-1 gap-4 w-full">
+      {pinsData.map((pin, idx) => {
+        const {position: {lat, lng}, title, description} = pin;
+        const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+
+        return (
+          <div
+            key={idx}
+            className={`
+            bg-white border rounded-lg p-4 hover:shadow-md transition-shadow duration-200
+            ${idx === 0 ? 'mt-4' : ''}
+            ${idx === pinsData.length - 1 ? 'mb-4' : ''}
+            `}
+          >
+            <h3 className="text-lg font-semibold mb-1">{title}</h3>
+            <p className="text-sm mb-2 text-zinc-600">{description}</p>
+            <a
+              href={directionsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block text-sm font-medium text-blue-600 hover:underline"
+            >
+              Indicazioni →
+            </a>
+          </div>
+        );
+      })}
     </div>
-  )
-}
+  );
+};
+
 export default MapPinList;
