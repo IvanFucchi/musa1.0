@@ -6,7 +6,6 @@ import {useGlobalState} from "@/context/GlobalState";
 
 const ExplorePage = () => {
   const { place, activity } = useGlobalState();
-
   const [searchParams, setSearchParams] = useSearchParams();
   const [pinsData, setPinsData] = useState([]);
 
@@ -82,7 +81,7 @@ const ExplorePage = () => {
         <div className="flex w-full lg:w-1/2">
           <MapPinList pinsData={data}/>
         </div>
-        <div className="flex w-full lg:w-1/2 rounded-lg overflow-hidden">
+        <div className="flex w-full lg:w-1/2 rounded-lg overflow-hidden min-h-[50vh]">
           <MapPins pinsData={data}/>
         </div>
       </div>
