@@ -65,15 +65,26 @@ const ExplorePage = () => {
   return (
     <section className="flex w-full lg:h-[calc(100vh-82px)] min-h-[50vh]">
 
-      {isLoading && 'isLoading'}
-      <div className="container mx-auto flex flex-wrap h-full">
-        <div className="flex w-full h-full lg:w-1/2">
-          <MapPinList pinsData={pinsData}/>
+      {!isLoading &&
+        <div className="container mx-auto flex flex-wrap h-full">
+          <div className="flex w-full h-full lg:w-1/2">
+            <MapPinList pinsData={pinsData}/>
+          </div>
+          <div className="flex w-full lg:w-1/2 rounded-lg overflow-hidden min-h-[50vh] my-4">
+            <MapPins pinsData={pinsData}/>
+          </div>
         </div>
-        <div className="flex w-full lg:w-1/2 rounded-lg overflow-hidden min-h-[50vh] my-4">
-          <MapPins pinsData={pinsData}/>
+      }
+
+      {isLoading &&
+        <div className="container mx-auto flex items-center justify-center h-full">
+          <div className="flex flex-col items-center">
+            <div className="animate-spin rounded-full h-6 w-6 border-2 border-zinc-800 border-t-transparent"></div>
+            <p className="mt-4 text-zinc-600 text-sm">Caricamento in corso…</p>
+          </div>
         </div>
-      </div>
+      }
+
     </section>
   );
 };
