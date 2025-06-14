@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext';
 const AdminDashboardPage = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('pending');
-  
+
   // Redirect se non admin
   useEffect(() => {
     if (user && user.role !== 'admin') {
@@ -26,9 +26,9 @@ const AdminDashboardPage = () => {
   }
 
   return (
-    <div>
+    <div className="container my-10 space-y-8">
       <h1 className="page-title">Dashboard Amministratore</h1>
-      
+
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
         <nav className="-mb-px flex space-x-8">
@@ -64,7 +64,7 @@ const AdminDashboardPage = () => {
           </button>
         </nav>
       </div>
-      
+
       {/* Tab Content */}
       <div>
         {activeTab === 'pending' && <PendingContentTab />}
@@ -90,7 +90,7 @@ const PendingContentTab = () => {
     try {
       setLoading(true);
       const { data } = await axios.get('http://localhost:5000/api/ugc/pending');
-      
+
       if (data.success) {
         setPendingContent(data.data);
       } else {
@@ -106,11 +106,11 @@ const PendingContentTab = () => {
   const handleApprove = async (id) => {
     try {
       const { data } = await axios.put(`http://localhost:5000/api/ugc/${id}/approve`);
-      
+
       if (data.success) {
         setPendingContent(prev => prev.filter(item => item._id !== id));
         setSuccessMessage('Contenuto approvato con successo');
-        
+
         // Nascondi il messaggio dopo 3 secondi
         setTimeout(() => {
           setSuccessMessage('');
@@ -124,11 +124,11 @@ const PendingContentTab = () => {
   const handleReject = async (id) => {
     try {
       const { data } = await axios.delete(`http://localhost:5000/api/ugc/${id}`);
-      
+
       if (data.success) {
         setPendingContent(prev => prev.filter(item => item._id !== id));
         setSuccessMessage('Contenuto rifiutato con successo');
-        
+
         // Nascondi il messaggio dopo 3 secondi
         setTimeout(() => {
           setSuccessMessage('');
@@ -152,17 +152,17 @@ const PendingContentTab = () => {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-semibold">Contenuti in attesa di approvazione</h2>
-        <Button 
-          variant="outline" 
+        <Button
+          variant="outline"
           onClick={fetchPendingContent}
         >
           Aggiorna
         </Button>
       </div>
-      
+
       {error && <Alert type="error" message={error} className="mb-4" />}
       {successMessage && <Alert type="success" message={successMessage} className="mb-4" />}
-      
+
       {pendingContent.length > 0 ? (
         <div className="space-y-6">
           {pendingContent.map(content => (
@@ -175,15 +175,15 @@ const PendingContentTab = () => {
                       content.type === 'comment' ? 'bg-green-100 text-green-800' :
                       'bg-purple-100 text-purple-800'
                     }`}>
-                      {content.type === 'review' ? 'Recensione' : 
+                      {content.type === 'review' ? 'Recensione' :
                        content.type === 'comment' ? 'Commento' : 'Foto'}
                     </span>
-                    
+
                     <span className="ml-2 text-gray-500 text-sm">
                       {new Date(content.createdAt).toLocaleDateString()}
                     </span>
                   </div>
-                  
+
                   <div className="flex items-center mb-3">
                     {content.user?.avatar ? (
                       <img src={content.user.avatar} alt={content.user.name} className="w-8 h-8 rounded-full mr-2" />
@@ -194,20 +194,20 @@ const PendingContentTab = () => {
                     )}
                     <span className="font-medium">{content.user?.name}</span>
                   </div>
-                  
+
                   {content.spot && (
                     <p className="text-sm text-gray-600 mb-3">
                       Spot: <span className="font-medium">{content.spot.name}</span>
                     </p>
                   )}
-                  
+
                   {content.type === 'review' && content.rating && (
                     <div className="flex mb-2">
                       {[...Array(5)].map((_, i) => (
-                        <svg 
-                          key={i} 
-                          className={`w-5 h-5 ${i < content.rating ? 'text-yellow-400' : 'text-gray-300'}`} 
-                          fill="currentColor" 
+                        <svg
+                          key={i}
+                          className={`w-5 h-5 ${i < content.rating ? 'text-yellow-400' : 'text-gray-300'}`}
+                          fill="currentColor"
                           viewBox="0 0 20 20"
                         >
                           <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
@@ -215,22 +215,22 @@ const PendingContentTab = () => {
                       ))}
                     </div>
                   )}
-                  
+
                   {content.content && (
                     <p className="text-gray-700">{content.content}</p>
                   )}
-                  
+
                   {content.type === 'photo' && content.imageUrl && (
                     <div className="mt-3 max-w-md">
-                      <img 
-                        src={content.imageUrl} 
-                        alt="Contenuto utente" 
+                      <img
+                        src={content.imageUrl}
+                        alt="Contenuto utente"
                         className="rounded-lg"
                       />
                     </div>
                   )}
                 </div>
-                
+
                 <div className="flex flex-col space-y-2">
                   <Button
                     variant="success"

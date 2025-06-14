@@ -1,4 +1,3 @@
-// src/pages/ExplorePage.jsx
 import React, {useEffect, useState} from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
 import MapPins from '@/components/common/MapPins';
@@ -8,7 +7,6 @@ import {useGlobalState, useGlobalDispatch} from '@/context/GlobalState';
 const DEFAULT_PLACE = 'roma';
 const DEFAULT_ACTIVITY = 'arte';
 
-// cache a livello di modulo per ricordare gli ultimi parametri fetchati
 let lastFetchParams = {place: null, activity: null};
 
 const ExplorePage = () => {
@@ -22,7 +20,6 @@ const ExplorePage = () => {
   const [selectedPinId, setSelectedPinId] = useState(null);
   const backendUrl = process.env.REACT_APP_BACKEND_PATH || 'http://localhost:5000';
 
-  // 1) All’avvio e ad ogni cambio di query string: redirect ai default o aggiorno global state
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const p = params.get('place');
@@ -44,9 +41,7 @@ const ExplorePage = () => {
     }
   }, [location.search, navigate, dispatch, place, activity]);
 
-  // 2) Quando cambia place/activity: fetch solo se diversi da lastFetchParams
   useEffect(() => {
-    // non fare nulla se vuoti
     if (!place.trim() || !activity.trim()) return;
 
     const fetchSpots = async () => {
@@ -80,7 +75,6 @@ const ExplorePage = () => {
         setPinsData([]);
       } finally {
         setIsLoading(false);
-        // aggiorno la cache a modulo
         lastFetchParams = {place, activity};
       }
     };
