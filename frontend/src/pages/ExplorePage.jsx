@@ -1,67 +1,98 @@
+// src/pages/ExplorePage.jsx
 import React, {useEffect, useState} from 'react';
-import {useSearchParams} from 'react-router-dom';
+import {useLocation, useNavigate} from 'react-router-dom';
 import MapPins from '@/components/common/MapPins';
 import MapPinList from '@/components/common/MapPinList';
 import {useGlobalState, useGlobalDispatch} from '@/context/GlobalState';
 
+const DEFAULT_PLACE = 'roma';
+const DEFAULT_ACTIVITY = 'arte';
+
+// cache a livello di modulo per ricordare gli ultimi parametri fetchati
+let lastFetchParams = {place: null, activity: null};
+
 const ExplorePage = () => {
-  const {place, activity} = useGlobalState();
+  const location = useLocation();
+  const navigate = useNavigate();
   const dispatch = useGlobalDispatch();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const {place, activity} = useGlobalState();
+
   const [pinsData, setPinsData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPinId, setSelectedPinId] = useState(null);
   const backendUrl = process.env.REACT_APP_BACKEND_PATH || 'http://localhost:5000';
 
+  // 1) All’avvio e ad ogni cambio di query string: redirect ai default o aggiorno global state
   useEffect(() => {
-    const p = searchParams.get('place');
-    const a = searchParams.get('activity');
+    const params = new URLSearchParams(location.search);
+    const p = params.get('place');
+    const a = params.get('activity');
+
     if (!p || !a) {
-      setSearchParams({place: p || 'roma', activity: a || 'arte'}, {replace: true});
-      dispatch({type: 'SET_PLACE', payload: p || 'roma'});
-      dispatch({type: 'SET_ACTIVITY', payload: a || 'arte'});
-    } else if (p !== place || a !== activity) {
+      navigate(
+        `/explore?place=${DEFAULT_PLACE}&activity=${DEFAULT_ACTIVITY}`,
+        {replace: true}
+      );
+      return;
+    }
+
+    if (p !== place) {
       dispatch({type: 'SET_PLACE', payload: p});
+    }
+    if (a !== activity) {
       dispatch({type: 'SET_ACTIVITY', payload: a});
     }
-  }, [searchParams, setSearchParams, dispatch, place, activity]);
+  }, [location.search, navigate, dispatch, place, activity]);
 
+  // 2) Quando cambia place/activity: fetch solo se diversi da lastFetchParams
   useEffect(() => {
-    if (!place?.trim() || !activity?.trim()) return;
+    // non fare nulla se vuoti
+    if (!place.trim() || !activity.trim()) return;
+
     const fetchSpots = async () => {
       setIsLoading(true);
+      console.log('>>> Fetching spots for place:', place, 'activity:', activity);
+
       try {
         const res = await fetch(
           `${backendUrl}/api/spots?place=${encodeURIComponent(place)}&activity=${encodeURIComponent(activity)}`
         );
         const json = await res.json();
         if (json.success) {
-          const mapped = json.data.map((spot, i) => ({
-            id: i + 1,
-            title: spot.title,
-            description: spot.description,
-            imageUrl: spot.imageUrl,
-            position: {lat: spot.coordinates[1], lng: spot.coordinates[0]},
-            url: spot.url,
-          }));
-          setPinsData(mapped);
+          setPinsData(
+            json.data.map((spot, i) => ({
+              id: i + 1,
+              title: spot.title,
+              description: spot.description,
+              imageUrl: spot.imageUrl,
+              position: {
+                lat: spot.coordinates[1],
+                lng: spot.coordinates[0],
+              },
+              url: spot.url,
+            }))
+          );
         } else {
           setPinsData([]);
         }
-      } catch {
+      } catch (err) {
+        console.error('Fetch error:', err);
         setPinsData([]);
       } finally {
         setIsLoading(false);
+        // aggiorno la cache a modulo
+        lastFetchParams = {place, activity};
       }
     };
+
     fetchSpots();
-  }, [place, activity]);
+  }, [place, activity, backendUrl]);
 
   return (
     <section className="flex w-full lg:h-[calc(100vh-82px)] min-h-[50vh]">
       {isLoading ? (
         <div className="container mx-auto flex items-center justify-center h-full">
-          <div className="flex flex-col items-center">
+          <div className="flex flex-col items-center my-20">
             <div className="animate-spin rounded-full h-6 w-6 border-2 border-zinc-800 border-t-transparent"/>
             <p className="mt-4 text-zinc-600 text-sm">Caricamento in corso…</p>
           </div>

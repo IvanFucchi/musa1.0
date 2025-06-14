@@ -1,3 +1,4 @@
+// src/components/common/SearchForm.jsx
 import React, {useState, useRef, useEffect} from 'react';
 import {useNavigate, useLocation} from 'react-router-dom';
 import {useGlobalState, useGlobalDispatch} from '@/context/GlobalState';
@@ -9,22 +10,30 @@ const SearchForm = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [placeInput, setPlaceInput] = useState('');
-  const [activityInput, setActivityInput] = useState('');
-
+  const [placeInput, setPlaceInput] = useState(globalPlace);
+  const [activityInput, setActivityInput] = useState(globalActivity);
   const placeRef = useRef(null);
   const activityRef = useRef(null);
 
+  // 1) Quando NON sono su /explore: resetto global state e input locali
   useEffect(() => {
-    if (location.pathname.startsWith('/explore')) {
-      setPlaceInput(globalPlace || '');
-      setActivityInput(globalActivity || '');
-    } else {
+    if (!location.pathname.startsWith('/explore')) {
+      dispatch({type: 'SET_PLACE', payload: ''});
+      dispatch({type: 'SET_ACTIVITY', payload: ''});
       setPlaceInput('');
       setActivityInput('');
     }
+  }, [location.pathname, dispatch]);
+
+  // 2) Quando sono su /explore e cambia il global state, riallineo i campi
+  useEffect(() => {
+    if (location.pathname.startsWith('/explore')) {
+      setPlaceInput(globalPlace);
+      setActivityInput(globalActivity);
+    }
   }, [location.pathname, globalPlace, globalActivity]);
 
+  // 3) Scroll-to-top su /explore
   useEffect(() => {
     if (location.pathname.startsWith('/explore')) {
       window.scrollTo({top: 0, behavior: 'smooth'});
@@ -37,17 +46,21 @@ const SearchForm = () => {
     e.preventDefault();
     if (!isValid) return;
 
-    dispatch({type: 'SET_PLACE', payload: placeInput.trim()});
-    dispatch({type: 'SET_ACTIVITY', payload: activityInput.trim()});
+    const place = placeInput.trim();
+    const activity = activityInput.trim();
 
+    // aggiorno il contesto
+    dispatch({type: 'SET_PLACE', payload: place});
+    dispatch({type: 'SET_ACTIVITY', payload: activity});
+
+    // tolgo focus
     placeRef.current?.blur();
     activityRef.current?.blur();
 
-    const params = new URLSearchParams({
-      place: placeInput.trim(),
-      activity: activityInput.trim(),
-    });
-    navigate(`/explore?${params.toString()}`);
+    // navigo con i parametri
+    navigate(
+      `/explore?place=${encodeURIComponent(place)}&activity=${encodeURIComponent(activity)}`
+    );
   };
 
   return (
