@@ -1,8 +1,8 @@
-import MapPins from "@/components/common/MapPins";
-import MapPinList from "@/components/common/MapPinList";
-import {useSearchParams} from "react-router-dom";
-import {useEffect, useState} from "react";
-import {useGlobalState, useGlobalDispatch} from "@/context/GlobalState";
+import React, {useEffect, useState} from 'react';
+import {useSearchParams} from 'react-router-dom';
+import MapPins from '@/components/common/MapPins';
+import MapPinList from '@/components/common/MapPinList';
+import {useGlobalState, useGlobalDispatch} from '@/context/GlobalState';
 
 const ExplorePage = () => {
   const {place, activity} = useGlobalState();
@@ -10,19 +10,19 @@ const ExplorePage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [pinsData, setPinsData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activePinId, setActivePinId] = useState(null);
-  const backendUrl = process.env.REACT_APP_BACKEND_PATH || "http://localhost:5000";
+  const [selectedPinId, setSelectedPinId] = useState(null);
+  const backendUrl = process.env.REACT_APP_BACKEND_PATH || 'http://localhost:5000';
 
   useEffect(() => {
-    const p = searchParams.get("place");
-    const a = searchParams.get("activity");
+    const p = searchParams.get('place');
+    const a = searchParams.get('activity');
     if (!p || !a) {
-      setSearchParams({place: p || "roma", activity: a || "arte"}, {replace: true});
-      dispatch({type: "SET_PLACE", payload: p || "roma"});
-      dispatch({type: "SET_ACTIVITY", payload: a || "arte"});
+      setSearchParams({place: p || 'roma', activity: a || 'arte'}, {replace: true});
+      dispatch({type: 'SET_PLACE', payload: p || 'roma'});
+      dispatch({type: 'SET_ACTIVITY', payload: a || 'arte'});
     } else if (p !== place || a !== activity) {
-      dispatch({type: "SET_PLACE", payload: p});
-      dispatch({type: "SET_ACTIVITY", payload: a});
+      dispatch({type: 'SET_PLACE', payload: p});
+      dispatch({type: 'SET_ACTIVITY', payload: a});
     }
   }, [searchParams, setSearchParams, dispatch, place, activity]);
 
@@ -35,11 +35,9 @@ const ExplorePage = () => {
           `${backendUrl}/api/spots?place=${encodeURIComponent(place)}&activity=${encodeURIComponent(activity)}`
         );
         const json = await res.json();
-        if (!json.success) {
-          setPinsData([]);
-        } else {
-          const mapped = json.data.map((spot, idx) => ({
-            id: idx + 1,
+        if (json.success) {
+          const mapped = json.data.map((spot, i) => ({
+            id: i + 1,
             title: spot.title,
             description: spot.description,
             imageUrl: spot.imageUrl,
@@ -47,6 +45,8 @@ const ExplorePage = () => {
             url: spot.url,
           }));
           setPinsData(mapped);
+        } else {
+          setPinsData([]);
         }
       } catch {
         setPinsData([]);
@@ -61,21 +61,25 @@ const ExplorePage = () => {
     <section className="flex w-full lg:h-[calc(100vh-82px)] min-h-[50vh]">
       {isLoading ? (
         <div className="container mx-auto flex items-center justify-center h-full">
-          <div className="animate-spin rounded-full h-6 w-6 border-2 border-zinc-800 border-t-transparent"></div>
-          <p className="mt-4 text-zinc-600 text-sm">Caricamento in corso…</p>
+          <div className="flex flex-col items-center">
+            <div className="animate-spin rounded-full h-6 w-6 border-2 border-zinc-800 border-t-transparent"/>
+            <p className="mt-4 text-zinc-600 text-sm">Caricamento in corso…</p>
+          </div>
         </div>
       ) : (
         <div className="container mx-auto flex flex-wrap h-full">
           <div className="flex w-full h-full lg:w-1/2">
             <MapPinList
               pinsData={pinsData}
-              onPinSelect={setActivePinId}
+              selectedPinId={selectedPinId}
+              onSelectPin={setSelectedPinId}
             />
           </div>
           <div className="flex w-full lg:w-1/2 rounded-lg overflow-hidden min-h-[50vh] my-4">
             <MapPins
               pinsData={pinsData}
-              activePinId={activePinId}
+              selectedPinId={selectedPinId}
+              onSelectPin={setSelectedPinId}
             />
           </div>
         </div>
