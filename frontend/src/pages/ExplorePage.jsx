@@ -10,17 +10,14 @@ const ExplorePage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [pinsData, setPinsData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const backendUrl =  process.env.REACT_APP_BACKEND_PATH || "http://localhost:5000";
+  const [activePinId, setActivePinId] = useState(null);
+  const backendUrl = process.env.REACT_APP_BACKEND_PATH || "http://localhost:5000";
 
   useEffect(() => {
     const p = searchParams.get("place");
     const a = searchParams.get("activity");
-
     if (!p || !a) {
-      setSearchParams(
-        {place: p || "roma", activity: a || "arte"},
-        {replace: true}
-      );
+      setSearchParams({place: p || "roma", activity: a || "arte"}, {replace: true});
       dispatch({type: "SET_PLACE", payload: p || "roma"});
       dispatch({type: "SET_ACTIVITY", payload: a || "arte"});
     } else if (p !== place || a !== activity) {
@@ -31,14 +28,11 @@ const ExplorePage = () => {
 
   useEffect(() => {
     if (!place?.trim() || !activity?.trim()) return;
-
     const fetchSpots = async () => {
       setIsLoading(true);
       try {
         const res = await fetch(
-          `${backendUrl}/api/spots?place=${encodeURIComponent(
-            place
-          )}&activity=${encodeURIComponent(activity)}`
+          `${backendUrl}/api/spots?place=${encodeURIComponent(place)}&activity=${encodeURIComponent(activity)}`
         );
         const json = await res.json();
         if (!json.success) {
@@ -49,10 +43,7 @@ const ExplorePage = () => {
             title: spot.title,
             description: spot.description,
             imageUrl: spot.imageUrl,
-            position: {
-              lat: spot.coordinates[1],
-              lng: spot.coordinates[0],
-            },
+            position: {lat: spot.coordinates[1], lng: spot.coordinates[0]},
             url: spot.url,
           }));
           setPinsData(mapped);
@@ -63,7 +54,6 @@ const ExplorePage = () => {
         setIsLoading(false);
       }
     };
-
     fetchSpots();
   }, [place, activity]);
 
@@ -71,18 +61,22 @@ const ExplorePage = () => {
     <section className="flex w-full lg:h-[calc(100vh-82px)] min-h-[50vh]">
       {isLoading ? (
         <div className="container mx-auto flex items-center justify-center h-full">
-          <div className="flex flex-col items-center">
-            <div className="animate-spin rounded-full h-6 w-6 border-2 border-zinc-800 border-t-transparent"></div>
-            <p className="mt-4 text-zinc-600 text-sm">Caricamento in corso…</p>
-          </div>
+          <div className="animate-spin rounded-full h-6 w-6 border-2 border-zinc-800 border-t-transparent"></div>
+          <p className="mt-4 text-zinc-600 text-sm">Caricamento in corso…</p>
         </div>
       ) : (
         <div className="container mx-auto flex flex-wrap h-full">
           <div className="flex w-full h-full lg:w-1/2">
-            <MapPinList pinsData={pinsData}/>
+            <MapPinList
+              pinsData={pinsData}
+              onPinSelect={setActivePinId}
+            />
           </div>
           <div className="flex w-full lg:w-1/2 rounded-lg overflow-hidden min-h-[50vh] my-4">
-            <MapPins pinsData={pinsData}/>
+            <MapPins
+              pinsData={pinsData}
+              activePinId={activePinId}
+            />
           </div>
         </div>
       )}
