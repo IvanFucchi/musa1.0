@@ -87,6 +87,7 @@ const ExplorePage = () => {
       {isLoading ? (
         <div className="container mx-auto flex items-center justify-center h-full">
           <div className="flex flex-col items-center my-20">
+                      
                       <video
             src="/loading/matrona.mp4"
             autoPlay
@@ -94,8 +95,8 @@ const ExplorePage = () => {
             muted
             playsInline
             className="w-40 h-40 object-contain rounded-full mb-4 bg-white"
-            type="video/mp4"
           />
+          
             {/* <div className="animate-spin rounded-full h-6 w-6 border-2 border-zinc-800 border-t-transparent"/> */}
             <p className="mt-4 text-zinc-600 text-sm">Caricamento in corso…</p>
           </div>
