@@ -47,7 +47,7 @@ export default function Header({handleTextSearch, handleLocationSearch}) {
               <Link to="/">Home</Link>
             </li>
             <li>
-              <Link to="/explore?place=roma&activity=arte">Esplora</Link>
+              <Link to="/explore?place=roma&activity=caravaggio">Esplora</Link>
             </li>
             {!isAuthenticated &&
               <li>

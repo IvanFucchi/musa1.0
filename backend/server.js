@@ -7,6 +7,12 @@ import session from 'express-session';
 // import authRoutes from './routes/authRoutes.js';
 import morgan from 'morgan';
 import suggestionsRoutes from './routes/suggestionsRoutes.js';
+import museumApiRoutes from './routes/museumApiRoutes.js';
+
+// Import routes
+import authRoutes from './routes/authRoutes.js';
+import spotRoutes from './routes/spotRoutes.js';
+import ugcRoutes from './routes/ugcRoutes.js';
 
 
 import { notFound, errorHandler, validationErrorHandler, authErrorHandler } from './middleware/errorHandler.js';
@@ -32,10 +38,7 @@ testOpenAI();
 
 */
 
-// Import routes
-import authRoutes from './routes/authRoutes.js';
-import spotRoutes from './routes/spotRoutes.js';
-import ugcRoutes from './routes/ugcRoutes.js';
+
 
 
 dotenv.config();
@@ -106,6 +109,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/spots', spotRoutes);
 app.use('/api/ugc', ugcRoutes);
 
+
+app.use('/api/spots', museumApiRoutes);
+
 // Rotta base
 app.get('/', (req, res) => {
   res.json({
@@ -159,6 +165,9 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // per suggerimenti nuova barra di ricerca
 app.use('/api/suggestions', suggestionsRoutes);
+
+
+
 
 
 export default app;
