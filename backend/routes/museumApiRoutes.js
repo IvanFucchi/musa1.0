@@ -1,59 +1,210 @@
-// Routes per l'integrazione delle API museali - AGGIORNATO
-// Integrato con spotController esistente e path corretti
+// Routes per l'integrazione delle API museali - VERSIONE CON CACHE FIX
+// Fix per termini di ricerca consistenti - risolve il problema delle descrizioni variabili
 
 import express from 'express';
 import spotController from '../controllers/spotController.js';
 import MuseumApiService from '../utils/museumApiService.js';
 import ImageMatchingService from '../utils/imageMatchingService.js';
-
-
-
-// Funzione temporanea per estrarre termini di ricerca
-const extractSearchTermsTemp = (spot) => {
-  const terms = [];
-  
-  if (spot.name) terms.push(spot.name);
-  if (spot.title && spot.title !== spot.name) terms.push(spot.title);
-  if (spot.description) {
-    const keywords = spot.description.split(' ')
-      .filter(word => word.length > 3)
-      .slice(0, 3);
-    terms.push(...keywords);
-  }
-  if (spot.location) terms.push(spot.location);
-  
-  return [...new Set(terms)].filter(term => term && term.trim().length > 2).slice(0, 5);
-};
-
-
-
-
+import MuseumCacheService from '../utils/MuseumCacheService.js';
 
 const router = express.Router();
 
 // Inizializza i servizi
 const museumApiService = new MuseumApiService();
 const imageMatchingService = new ImageMatchingService();
+const cacheService = new MuseumCacheService();
 
-// Route principale per ottenere spots arricchiti con immagini
+// Avvia cleanup periodico cache
+cacheService.startPeriodicCleanup();
+
+// Configurazione ottimizzazioni
+const OPTIMIZATION_CONFIG = {
+  enableCache: true,
+  maxSpotsToProcess: 5,
+  maxImagesPerSpot: 1,
+  apiTimeoutMs: 2000,
+  totalTimeoutMs: 3000,
+  parallelBatchSize: 4,
+  rateLimitDelayMs: 75
+};
+
+// FUNZIONE FISSA: Termini di ricerca consistenti (NON usa descrizioni variabili)
+const extractSearchTermsConsistent = (spot, originalQuery, place) => {
+  const terms = [];
+  
+  console.log(`🔧 Extracting consistent terms for: ${spot.name}`);
+  
+  // 1. SEMPRE il nome del posto (stabile)
+  if (spot.name) {
+    terms.push(spot.name);
+  }
+  if (spot.title && spot.title !== spot.name) {
+    terms.push(spot.title);
+  }
+  
+  // 2. SEMPRE la query originale dell'utente (stabile)
+  if (originalQuery) {
+    terms.push(originalQuery);
+  }
+  
+  // 3. SEMPRE il luogo (stabile)
+  if (place) {
+    terms.push(place);
+  }
+  
+  // 4. Parole chiave FISSE dal nome (non dalla descrizione variabile)
+  if (spot.name) {
+    const nameKeywords = spot.name
+      .split(' ')
+      .filter(word => 
+        word.length > 3 && 
+        !['della', 'degli', 'delle', 'chiesa', 'palazzo', 'museo', 'galleria', 'santa', 'maria', 'san'].includes(word.toLowerCase())
+      )
+      .slice(0, 2); // Max 2 parole chiave dal nome
+    
+    terms.push(...nameKeywords);
+  }
+  
+  // Pulisci e normalizza per consistenza
+  const cleanTerms = [...new Set(terms)]
+    .filter(term => term && term.trim().length > 2)
+    .map(term => term.trim().toLowerCase()) // Lowercase per consistenza
+    .slice(0, 5); // Max 5 termini totali
+  
+  console.log(`🔧 Consistent terms: [${cleanTerms.join(', ')}]`);
+  return cleanTerms;
+};
+
+// Funzione per arricchimento singolo spot con cache FISSO
+const enrichSpotWithCache = async (spot, originalQuery, place) => {
+  try {
+    console.log(`🔍 Enriching spot: ${spot.title || spot.name}`);
+    
+    // Estrai termini di ricerca CONSISTENTI
+    const searchTerms = extractSearchTermsConsistent(
+      { name: spot.title || spot.name, title: spot.title },
+      originalQuery,
+      place
+    );
+    
+    console.log(`🔎 Search terms: ${searchTerms.join(', ')}`);
+    
+    if (searchTerms.length === 0) {
+      spot.museumImages = [];
+      spot.imageEnrichmentStatus = 'no_terms';
+      return spot;
+    }
+    
+    const searchQuery = searchTerms.join(' ');
+    
+    // 1. PROVA CACHE PRIMA
+    if (OPTIMIZATION_CONFIG.enableCache) {
+      const cachedResult = await cacheService.getCachedResults(searchTerms, searchQuery);
+      if (cachedResult) {
+        spot.museumImages = cachedResult.results;
+        spot.imageEnrichmentStatus = 'success_cached';
+        spot.cacheInfo = {
+          type: cachedResult.cacheType,
+          age: cachedResult.age,
+          hitCount: cachedResult.hitCount
+        };
+        
+        console.log(`⚡ Cache hit (${cachedResult.cacheType}) for ${spot.title}: ${cachedResult.results.length} images`);
+        return spot;
+      }
+    }
+    
+    // 2. CACHE MISS - CHIAMA API CON TIMEOUT
+    console.log(`🌐 Cache miss - calling APIs for: ${spot.title}`);
+    
+    const apiStartTime = Date.now();
+    let museumImages = [];
+    
+    try {
+      // Chiamata API con timeout
+      museumImages = await Promise.race([
+        museumApiService.searchAllMuseums(searchQuery, {
+          maxResults: OPTIMIZATION_CONFIG.maxImagesPerSpot,
+          includeMuseums: ['met', 'aic']
+        }),
+        new Promise((resolve) => 
+          setTimeout(() => {
+            console.log(`⏰ API timeout for ${spot.title} - returning empty results`);
+            resolve([]);
+          }, OPTIMIZATION_CONFIG.apiTimeoutMs)
+        )
+      ]);
+      
+      const apiTime = Date.now() - apiStartTime;
+      console.log(`🌐 API call completed in ${apiTime}ms for ${spot.title}`);
+      
+    } catch (apiError) {
+      console.error(`❌ API error for ${spot.title}:`, apiError.message);
+      museumImages = [];
+    }
+    
+    // 3. SALVA IN CACHE (anche se vuoto)
+    if (OPTIMIZATION_CONFIG.enableCache) {
+      const metadata = {
+        totalResults: museumImages.length,
+        sources: ['met', 'aic'],
+        processingTimeMs: Date.now() - apiStartTime,
+        apiCallsCount: 1,
+        searchTerms: searchTerms,
+        spotName: spot.title || spot.name,
+        originalQuery,
+        place
+      };
+      
+      await cacheService.cacheResults(searchTerms, searchQuery, museumImages, metadata);
+    }
+    
+    // 4. AGGIORNA SPOT
+    if (museumImages && museumImages.length > 0) {
+      spot.museumImages = museumImages;
+      spot.imageEnrichmentStatus = 'success';
+      console.log(`✅ Found ${museumImages.length} images for ${spot.title}`);
+    } else {
+      spot.museumImages = [];
+      spot.imageEnrichmentStatus = 'no_results';
+      console.log(`ℹ️ No images found for ${spot.title}`);
+    }
+    
+    // Piccola pausa per rate limiting
+    await new Promise(resolve => setTimeout(resolve, OPTIMIZATION_CONFIG.rateLimitDelayMs));
+    
+    return spot;
+    
+  } catch (error) {
+    console.error(`❌ Error enriching spot ${spot.title}:`, error.message);
+    spot.museumImages = [];
+    spot.imageEnrichmentStatus = 'error';
+    spot.enrichmentError = error.message;
+    return spot;
+  }
+};
+
+// Route principale ottimizzata con cache FISSO
 router.post('/enhanced', async (req, res) => {
+  const startTime = Date.now();
+  
   try {
     const { query, coordinates, place, enrichWithImages = false, filters = {} } = req.body;
     
     console.log('🎨 Enhanced spots request:', { query, place, enrichWithImages });
-    
-    // Crea una richiesta mock per il spotController esistente
-    const mockReq = {
-      query: {
-        place: place || '',
-        activity: query || ''
-      }
-    };
+    console.log('🔧 Using consistent search terms (fixed cache)');
     
     // Ottieni i risultati base usando il tuo spotController esistente
     let baseResults;
     try {
       baseResults = await new Promise((resolve, reject) => {
+        const mockReq = {
+          query: {
+            place: place || '',
+            activity: query || ''
+          }
+        };
+        
         const mockRes = {
           json: (data) => resolve(data),
           status: (code) => ({
@@ -67,7 +218,6 @@ router.post('/enhanced', async (req, res) => {
           })
         };
         
-        // Chiama il metodo getSpots del tuo controller esistente
         spotController.getSpots(mockReq, mockRes);
       });
     } catch (controllerError) {
@@ -90,75 +240,101 @@ router.post('/enhanced', async (req, res) => {
     let enrichedSpots = baseResults.data || [];
     let enrichmentStats = {
       totalSpots: enrichedSpots.length,
+      processedSpots: 0,
       enrichedSpots: 0,
       totalImages: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
       apiCalls: 0,
       errors: 0,
-      processingTime: 0
+      processingTime: 0,
+      cacheFixApplied: true // Indica che il fix è attivo
     };
     
     console.log(`📍 Base spots found: ${enrichedSpots.length}`);
     
+    // Limita il numero di spots processati per performance
+    const spotsToProcess = enrichedSpots.slice(0, OPTIMIZATION_CONFIG.maxSpotsToProcess);
+    enrichmentStats.processedSpots = spotsToProcess.length;
+    
     // Arricchisci con immagini museo se richiesto
-    if (enrichWithImages && enrichedSpots.length > 0) {
-      const startTime = Date.now();
-      console.log('🏛️ Starting museum enrichment...');
+    if (enrichWithImages && spotsToProcess.length > 0) {
+      const enrichmentStartTime = Date.now();
+      console.log(`🏛️ Starting museum enrichment for ${spotsToProcess.length} spots...`);
       
       try {
-        // Processa ogni spot per l'arricchimento
-        for (let i = 0; i < Math.min(enrichedSpots.length, 10); i++) { // Limita a 10 per performance
-          const spot = enrichedSpots[i];
+        // PROCESSAMENTO PARALLELO A BATCH
+        const batchSize = OPTIMIZATION_CONFIG.parallelBatchSize;
+        const batches = [];
+        
+        for (let i = 0; i < spotsToProcess.length; i += batchSize) {
+          batches.push(spotsToProcess.slice(i, i + batchSize));
+        }
+        
+        console.log(`📦 Processing ${batches.length} batches of ${batchSize} spots each`);
+        
+        // Processa batch sequenzialmente, spots in parallelo dentro ogni batch
+        for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+          const batch = batches[batchIndex];
+          console.log(`📦 Processing batch ${batchIndex + 1}/${batches.length}`);
           
-          try {
-            console.log(`🔍 Enriching spot: ${spot.title || spot.name}`);
+          // PASSA query e place per termini consistenti
+          const batchPromise = Promise.allSettled(
+            batch.map(spot => enrichSpotWithCache(spot, query, place))
+          );
+          
+          const batchResults = await Promise.race([
+            batchPromise,
+            new Promise((resolve) => 
+              setTimeout(() => {
+                console.log(`⏰ Batch ${batchIndex + 1} timeout - proceeding with partial results`);
+                resolve(batch.map(() => ({ status: 'rejected', reason: new Error('Batch timeout') })));
+              }, OPTIMIZATION_CONFIG.totalTimeoutMs / batches.length)
+            )
+          ]);
+          
+          // Processa risultati del batch
+          batchResults.forEach((result, spotIndex) => {
+            const globalIndex = batchIndex * batchSize + spotIndex;
             
-            // Estrai termini di ricerca dal spot
-            const searchTerms = extractSearchTermsTemp({
-              name: spot.title || spot.name,
-              description: spot.description,
-              location: place
-            });
-            
-            console.log(`🔎 Search terms: ${searchTerms.join(', ')}`);
-            
-            // Cerca immagini correlate
-            const museumImages = await museumApiService.searchAllMuseums(searchTerms.join(' '), {
-              maxResults: 6,
-              includeMuseums: ['met', 'aic']
-            });
-            
-            enrichmentStats.apiCalls++;
-            
-            if (museumImages && museumImages.length > 0) {
-              spot.museumImages = museumImages;
-              spot.imageEnrichmentStatus = 'success';
-              enrichmentStats.enrichedSpots++;
-              enrichmentStats.totalImages += museumImages.length;
+            if (result.status === 'fulfilled') {
+              const enrichedSpot = result.value;
+              enrichedSpots[globalIndex] = enrichedSpot;
               
-              console.log(`✅ Found ${museumImages.length} images for ${spot.title}`);
+              if (enrichedSpot.imageEnrichmentStatus === 'success_cached') {
+                enrichmentStats.cacheHits++;
+              } else if (enrichedSpot.imageEnrichmentStatus === 'success') {
+                enrichmentStats.cacheMisses++;
+                enrichmentStats.apiCalls++;
+              }
+              
+              if (enrichedSpot.museumImages && enrichedSpot.museumImages.length > 0) {
+                enrichmentStats.enrichedSpots++;
+                enrichmentStats.totalImages += enrichedSpot.museumImages.length;
+              }
             } else {
-              spot.museumImages = [];
-              spot.imageEnrichmentStatus = 'no_results';
-              console.log(`ℹ️ No images found for ${spot.title}`);
+              console.error(`❌ Spot enrichment failed:`, result.reason?.message);
+              enrichmentStats.errors++;
+              
+              // Fallback per spot falliti
+              enrichedSpots[globalIndex].museumImages = [];
+              enrichedSpots[globalIndex].imageEnrichmentStatus = 'timeout';
             }
-            
-            // Piccola pausa per evitare rate limiting
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-          } catch (spotError) {
-            console.error(`❌ Error enriching spot ${spot.title}:`, spotError);
-            spot.museumImages = [];
-            spot.imageEnrichmentStatus = 'error';
-            enrichmentStats.errors++;
+          });
+          
+          // Pausa tra batch per rate limiting
+          if (batchIndex < batches.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 200));
           }
         }
         
-        enrichmentStats.processingTime = Date.now() - startTime;
+        enrichmentStats.processingTime = Date.now() - enrichmentStartTime;
         console.log(`🎨 Enrichment completed in ${enrichmentStats.processingTime}ms`);
         
       } catch (enrichmentError) {
         console.error('💥 Museum enrichment error:', enrichmentError);
-        // Continua senza arricchimento invece di fallire
+        enrichmentStats.errors = spotsToProcess.length;
+        enrichmentStats.processingTime = Date.now() - enrichmentStartTime;
       }
     }
     
@@ -175,10 +351,22 @@ router.post('/enhanced', async (req, res) => {
       url: spot.url,
       museumImages: spot.museumImages || [],
       imageEnrichmentStatus: spot.imageEnrichmentStatus || 'none',
+      cacheInfo: spot.cacheInfo,
       source: spot.source || 'openai'
     }));
     
+    const totalTime = Date.now() - startTime;
+    enrichmentStats.totalRequestTime = totalTime;
+    
+    // Calcola cache hit rate
+    const totalCacheRequests = enrichmentStats.cacheHits + enrichmentStats.cacheMisses;
+    const cacheHitRate = totalCacheRequests > 0 ? 
+      ((enrichmentStats.cacheHits / totalCacheRequests) * 100).toFixed(1) : 0;
+    
     console.log(`📊 Final stats:`, enrichmentStats);
+    console.log(`⚡ Total request time: ${totalTime}ms`);
+    console.log(`💨 Cache hit rate: ${cacheHitRate}%`);
+    console.log(`🔧 Cache fix active: Consistent search terms`);
     
     res.json({
       success: true,
@@ -186,24 +374,36 @@ router.post('/enhanced', async (req, res) => {
       metadata: {
         enrichmentEnabled: enrichWithImages,
         enrichmentStats,
+        performance: {
+          totalTimeMs: totalTime,
+          cacheHitRate: `${cacheHitRate}%`,
+          optimized: true,
+          cacheFixApplied: true,
+          version: 'cache-fix-v1'
+        },
         timestamp: new Date().toISOString()
       }
     });
     
   } catch (error) {
+    const totalTime = Date.now() - startTime;
     console.error('💥 Enhanced spots error:', error);
     res.status(500).json({
       success: false,
       error: error.message,
+      performance: {
+        totalTimeMs: totalTime,
+        failed: true
+      },
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
 
-// Route per testare l'arricchimento su un singolo spot
+// Route per testare l'arricchimento su un singolo spot (con cache fisso)
 router.post('/test-enrichment', async (req, res) => {
   try {
-    const { spot } = req.body;
+    const { spot, query = 'art', place = 'rome' } = req.body;
     
     if (!spot || !spot.title) {
       return res.status(400).json({
@@ -214,22 +414,16 @@ router.post('/test-enrichment', async (req, res) => {
     
     console.log(`🧪 Testing enrichment for: ${spot.title}`);
     
-    const searchTerms = imageMatchingService.extractSearchTerms(spot);
-// Cerca immagini correlate
-const museumImages = await museumApiService.searchAllMuseums(searchTerms.join(' '), {
-  maxResults: 6,
-  includeMuseums: ['met', 'aic']
-});
+    const enrichedSpot = await enrichSpotWithCache(spot, query, place);
     
     res.json({
       success: true,
-      spot: {
-        ...spot,
-        museumImages,
-        imageEnrichmentStatus: museumImages.length > 0 ? 'success' : 'no_results'
+      spot: enrichedSpot,
+      performance: {
+        optimized: true,
+        cacheEnabled: OPTIMIZATION_CONFIG.enableCache,
+        cacheFixApplied: true
       },
-      searchTerms,
-      resultsCount: museumImages.length,
       timestamp: new Date().toISOString()
     });
     
@@ -247,7 +441,7 @@ router.get('/museum-apis-health', async (req, res) => {
   try {
     console.log('🏥 Checking museum APIs health...');
     
-    const health = await museumApiService.checkHealth();
+    const health = await museumApiService.healthCheck();
     
     res.json({
       success: true,
@@ -264,10 +458,10 @@ router.get('/museum-apis-health', async (req, res) => {
   }
 });
 
-// Route per ricerca diretta nelle API museali (per testing/debug)
+// Route per ricerca diretta nelle API museali
 router.post('/museum-search', async (req, res) => {
   try {
-    const { query, museums = ['met', 'aic'], maxResults = 10 } = req.body;
+    const { query, museums = ['met', 'aic'], maxResults = 5 } = req.body;
     
     if (!query) {
       return res.status(400).json({
@@ -278,7 +472,7 @@ router.post('/museum-search', async (req, res) => {
     
     console.log(`🔍 Direct museum search: ${query}`);
     
-    const results = await museumApiService.searchArtworks([query], {
+    const results = await museumApiService.searchAllMuseums(query, {
       maxResults,
       includeMuseums: museums
     });
@@ -301,21 +495,59 @@ router.post('/museum-search', async (req, res) => {
   }
 });
 
-// Route per configurazione arricchimento
-router.get('/enrichment-config', async (req, res) => {
+// Route per statistiche cache
+router.get('/cache-stats', async (req, res) => {
   try {
-    const config = {
-      enabled: true,
-      maxSpotsToEnrich: 10,
-      maxImagesPerSpot: 6,
-      timeoutMs: 10000,
-      includeMuseums: ['met', 'aic'],
-      rateLimitDelayMs: 100
-    };
+    const stats = await cacheService.getStats();
     
     res.json({
       success: true,
-      config,
+      stats,
+      config: OPTIMIZATION_CONFIG,
+      cacheFixApplied: true,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('📊 Cache stats error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Route per invalidare cache
+router.delete('/cache/:searchKey', async (req, res) => {
+  try {
+    const { searchKey } = req.params;
+    
+    // Decodifica i termini di ricerca dal searchKey
+    const searchTerms = searchKey.split('|');
+    await cacheService.invalidateCache(searchTerms);
+    
+    res.json({
+      success: true,
+      message: `Cache invalidated for: ${searchTerms.join(', ')}`,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('🗑️ Cache invalidation error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Route per configurazione arricchimento
+router.get('/enrichment-config', async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      config: OPTIMIZATION_CONFIG,
+      cacheFixApplied: true,
       timestamp: new Date().toISOString()
     });
     
@@ -332,13 +564,16 @@ router.put('/enrichment-config', async (req, res) => {
   try {
     const { config } = req.body;
     
-    // In una implementazione reale, salveresti la config in un database
-    console.log('⚙️ Config update requested:', config);
+    // Aggiorna configurazione runtime
+    Object.assign(OPTIMIZATION_CONFIG, config);
+    
+    console.log('⚙️ Config updated:', OPTIMIZATION_CONFIG);
     
     res.json({
       success: true,
       message: 'Configuration updated',
-      config,
+      config: OPTIMIZATION_CONFIG,
+      cacheFixApplied: true,
       timestamp: new Date().toISOString()
     });
     
