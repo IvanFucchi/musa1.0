@@ -1,425 +1,269 @@
-// Image Matching Service - Algoritmi per il matching tra risultati OpenAI e opere museali
-import MuseumApiService from '../utils/museumApiService.js';
+// Image Matching Service - Algoritmi intelligenti per il matching tra risultati OpenAI e opere museali
+// Versione migliorata con filtri per tipo di luogo
 
 class ImageMatchingService {
   constructor() {
-    this.museumApi = new MuseumApiService();
-    
-    // Configurazione algoritmi di matching
-    this.matchingConfig = {
-      titleWeight: 0.4,
-      artistWeight: 0.3,
-      periodWeight: 0.15,
-      mediumWeight: 0.1,
-      keywordWeight: 0.05,
-      minimumScore: 0.3 // Soglia minima per considerare un match valido
-    };
+    this.typeCache = new Map(); // Cache per i tipi di luoghi
   }
-
-  // METODO MANCANTE: Estrae termini di ricerca da uno spot (richiesto dalle route)
+  
+  /**
+   * Estrae termini di ricerca da uno spot
+   * @param {Object} spot - Spot da cui estrarre i termini
+   * @returns {Array} - Array di termini di ricerca
+   */
   extractSearchTerms(spot) {
     const terms = [];
     
-    // Aggiungi il nome dello spot
+    // Estrai dal nome
     if (spot.name) {
       terms.push(spot.name);
     }
     
-    // Aggiungi il titolo se diverso dal nome
-    if (spot.title && spot.title !== spot.name) {
-      terms.push(spot.title);
-    }
-    
-    // Estrai informazioni dall'artista se presente nella descrizione
+    // Estrai dalla descrizione
     if (spot.description) {
-      const artistInfo = this.extractArtistInfo(spot.description);
-      if (artistInfo.artist) {
-        terms.push(artistInfo.artist);
-        
-        // Combina artista + opera se disponibile
-        if (artistInfo.artwork) {
-          terms.push(`${artistInfo.artist} ${artistInfo.artwork}`);
-        }
-      }
-      
-      // Estrai periodo storico/movimento artistico
-      const periodInfo = this.extractPeriodInfo(spot.description);
-      if (periodInfo) {
-        terms.push(periodInfo);
-      }
-      
       // Estrai parole chiave dalla descrizione
-      const keywords = this.extractKeywords(spot.description);
-      terms.push(...keywords.slice(0, 3)); // Prendi solo le prime 3 parole chiave
+      const keywords = spot.description.split(' ')
+        .filter(word => word.length > 3)
+        .slice(0, 3);
+      terms.push(...keywords);
     }
     
-    // Aggiungi la location se disponibile
+    // Estrai dalla location
     if (spot.location) {
       terms.push(spot.location);
     }
     
-    // Filtra termini vuoti e duplicati
-    const uniqueTerms = [...new Set(terms)]
-      .filter(term => term && term.trim().length > 2)
-      .slice(0, 5); // Limita a 5 termini per evitare troppe chiamate API
-    
-    console.log(`🔎 Extracted search terms for "${spot.name || spot.title}":`, uniqueTerms);
-    
-    return uniqueTerms;
+    // Pulisci e normalizza
+    return terms
+      .filter(term => term && term.trim().length > 0)
+      .map(term => term.trim());
   }
-
-  // Funzione principale per arricchire gli spots OpenAI con immagini
-  async enrichSpotsWithImages(aiGeneratedSpots, options = {}) {
-    const { maxImagesPerSpot = 3, includeMuseums = ['met', 'aic'] } = options;
+  
+  /**
+   * Estrae termini di ricerca consistenti (versione migliorata)
+   * @param {Object} spot - Spot da cui estrarre i termini
+   * @param {string} originalQuery - Query originale dell'utente
+   * @param {string} place - Luogo della ricerca
+   * @returns {Array} - Array di termini di ricerca consistenti
+   */
+  extractSearchTermsConsistent(spot, originalQuery, place) {
+    const terms = [];
     
-    const enrichedSpots = [];
+    console.log(`🔧 Extracting consistent terms for: ${spot.name || spot.title}`);
     
-    for (const spot of aiGeneratedSpots) {
-      try {
-        const enrichedSpot = await this.enrichSingleSpot(
-          spot, 
-          maxImagesPerSpot, 
-          includeMuseums
-        );
-        enrichedSpots.push(enrichedSpot);
-      } catch (error) {
-        console.error(`Error enriching spot ${spot.name}:`, error);
-        // Fallback: restituisce lo spot originale senza immagini
-        enrichedSpots.push({
-          ...spot,
-          museumImages: [],
-          imageEnrichmentStatus: 'failed',
-          imageEnrichmentError: error.message
-        });
-      }
-    }
-    
-    return enrichedSpots;
-  }
-
-  async enrichSingleSpot(spot, maxImages, includeMuseums) {
-    // Estrai informazioni chiave dallo spot OpenAI
-    const searchQueries = this.generateSearchQueries(spot);
-    
-    let allMatches = [];
-    
-    // Esegui ricerche per ogni query generata
-    for (const query of searchQueries) {
-      const museumResults = await this.museumApi.searchAllMuseums(query, {
-        maxResults: 10,
-        includeMuseums
-      });
-      
-      // Calcola score di matching per ogni risultato
-      const scoredResults = museumResults.map(artwork => ({
-        ...artwork,
-        matchScore: this.calculateMatchScore(spot, artwork),
-        searchQuery: query
-      }));
-      
-      allMatches = allMatches.concat(scoredResults);
-    }
-    
-    // Filtra e ordina i risultati
-    const validMatches = allMatches
-      .filter(match => match.matchScore >= this.matchingConfig.minimumScore)
-      .sort((a, b) => b.matchScore - a.matchScore);
-    
-    // Rimuovi duplicati (stesso ID da stesso museo)
-    const uniqueMatches = this.removeDuplicates(validMatches);
-    
-    // Seleziona le migliori immagini
-    const selectedImages = uniqueMatches.slice(0, maxImages);
-    
-    return {
-      ...spot,
-      museumImages: selectedImages,
-      imageEnrichmentStatus: selectedImages.length > 0 ? 'success' : 'no_matches',
-      totalMatchesFound: uniqueMatches.length,
-      searchQueriesUsed: searchQueries
-    };
-  }
-
-  // Genera query di ricerca basate sui dati dello spot
-  generateSearchQueries(spot) {
-    const queries = [];
-    
-    // Query principale basata sul nome
+    // 1. SEMPRE il nome del posto (stabile)
     if (spot.name) {
-      queries.push(spot.name);
+      terms.push(spot.name);
+    }
+    if (spot.title && spot.title !== spot.name) {
+      terms.push(spot.title);
     }
     
-    // Estrai informazioni dall'artista se presente nella descrizione
-    const artistInfo = this.extractArtistInfo(spot.description);
-    if (artistInfo.artist) {
-      queries.push(artistInfo.artist);
+    // 2. SEMPRE la query originale dell'utente (stabile)
+    if (originalQuery) {
+      terms.push(originalQuery);
+    }
+    
+    // 3. SEMPRE il luogo (stabile)
+    if (place) {
+      terms.push(place);
+    }
+    
+    // 4. Artisti associati (se disponibili)
+    if (spot.artists && Array.isArray(spot.artists) && spot.artists.length > 0) {
+      terms.push(...spot.artists.slice(0, 2));
+    }
+    
+    // 5. Periodo storico (se disponibile)
+    if (spot.period) {
+      terms.push(spot.period);
+    }
+    
+    // 6. Parole chiave FISSE dal nome (non dalla descrizione variabile)
+    if (spot.name || spot.title) {
+      const nameStr = (spot.name || spot.title).toLowerCase();
+      const nameKeywords = nameStr
+        .split(' ')
+        .filter(word => 
+          word.length > 3 && 
+          !['della', 'degli', 'delle', 'chiesa', 'palazzo', 'museo', 'galleria', 'santa', 'maria', 'san'].includes(word.toLowerCase())
+        )
+        .slice(0, 2); // Max 2 parole chiave dal nome
       
-      // Combina artista + opera se disponibile
-      if (artistInfo.artwork) {
-        queries.push(`${artistInfo.artist} ${artistInfo.artwork}`);
-      }
+      terms.push(...nameKeywords);
     }
     
-    // Estrai periodo storico/movimento artistico
-    const periodInfo = this.extractPeriodInfo(spot.description);
-    if (periodInfo) {
-      queries.push(periodInfo);
-    }
+    // Pulisci e normalizza per consistenza
+    const cleanTerms = [...new Set(terms)]
+      .filter(term => term && term.trim().length > 2)
+      .map(term => term.trim().toLowerCase()) // Lowercase per consistenza
+      .slice(0, 5); // Max 5 termini totali
     
-    // Query basate su parole chiave nella descrizione
-    const keywords = this.extractKeywords(spot.description);
-    keywords.forEach(keyword => {
-      if (keyword.length > 3) { // Evita parole troppo corte
-        queries.push(keyword);
-      }
-    });
-    
-    // Limita il numero di query per evitare troppe chiamate API
-    return queries.slice(0, 5);
+    console.log(`🔧 Consistent terms: [${cleanTerms.join(', ')}]`);
+    return cleanTerms;
   }
-
-  // Estrae informazioni sull'artista dalla descrizione
-  extractArtistInfo(description) {
-    if (!description) return { artist: null, artwork: null };
+  
+  /**
+   * Determina il tipo di luogo
+   * @param {Object} spot - Spot da analizzare
+   * @returns {string} - Tipo di luogo (museum, church, monument, palace, archaeological, generic)
+   */
+  determineLocationType(spot) {
+    // Controlla cache
+    const spotName = spot.name || spot.title || '';
+    if (this.typeCache.has(spotName)) {
+      return this.typeCache.get(spotName);
+    }
     
-    const artistPatterns = [
-      /(?:di|by|opera di|work by|painted by|created by)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/gi,
-      /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*(?:\([\d-]+\))?/g
-    ];
+    // Parole chiave per identificare il tipo
+    const typeKeywords = {
+      museum: ['museo', 'gallery', 'galleria', 'collection', 'collezione', 'exhibition', 'pinacoteca', 'art gallery'],
+      church: ['chiesa', 'basilica', 'cathedral', 'cattedrale', 'chapel', 'cappella', 'duomo', 'abbazia'],
+      monument: ['monument', 'monumento', 'statue', 'statua', 'memorial', 'obelisco', 'fontana', 'fountain'],
+      palace: ['palazzo', 'palace', 'villa', 'castle', 'castello', 'reggia', 'dimora', 'residenza'],
+      archaeological: ['archaeological', 'archeologico', 'ruins', 'rovine', 'ancient', 'antico', 'scavi', 'forum', 'foro']
+    };
     
-    const artworkPatterns = [
-      /"([^"]+)"/g, // Titoli tra virgolette
-      /(?:opera|painting|sculpture|work)\s+"([^"]+)"/gi
-    ];
-    
-    let artist = null;
-    let artwork = null;
-    
-    // Cerca artista
-    for (const pattern of artistPatterns) {
-      const match = pattern.exec(description);
-      if (match && match[1]) {
-        artist = match[1].trim();
-        break;
+    // Estrai tipo dal campo type se disponibile
+    if (spot.type) {
+      const lowerType = spot.type.toLowerCase();
+      for (const [category, keywords] of Object.entries(typeKeywords)) {
+        if (keywords.some(keyword => lowerType.includes(keyword))) {
+          this.typeCache.set(spotName, category);
+          return category;
+        }
       }
     }
     
-    // Cerca titolo opera
-    for (const pattern of artworkPatterns) {
-      const match = pattern.exec(description);
-      if (match && match[1]) {
-        artwork = match[1].trim();
-        break;
+    // Altrimenti analizza il nome e la descrizione
+    const text = `${spotName} ${spot.description || ''}`.toLowerCase();
+    
+    for (const [category, keywords] of Object.entries(typeKeywords)) {
+      if (keywords.some(keyword => text.includes(keyword))) {
+        this.typeCache.set(spotName, category);
+        return category;
       }
     }
     
-    return { artist, artwork };
+    // Default
+    this.typeCache.set(spotName, 'generic');
+    return 'generic';
   }
-
-  // Estrae informazioni sul periodo/movimento artistico
-  extractPeriodInfo(description) {
-    if (!description) return null;
-    
-    const periodPatterns = [
-      /(?:rinascimento|renaissance)/gi,
-      /(?:barocco|baroque)/gi,
-      /(?:impressionism|impressionismo)/gi,
-      /(?:post-impressionism|post-impressionismo)/gi,
-      /(?:cubism|cubismo)/gi,
-      /(?:surrealism|surrealismo)/gi,
-      /(?:romanticism|romanticismo)/gi,
-      /(?:neoclassicism|neoclassicismo)/gi,
-      /(?:medieval|medievale)/gi,
-      /(?:modern art|arte moderna)/gi,
-      /(?:contemporary art|arte contemporanea)/gi
-    ];
-    
-    for (const pattern of periodPatterns) {
-      const match = pattern.exec(description);
-      if (match) {
-        return match[0];
-      }
+  
+  /**
+   * Filtra risultati per tipo di luogo
+   * @param {Array} results - Risultati da filtrare
+   * @param {string} spotType - Tipo di luogo
+   * @returns {Array} - Risultati filtrati
+   */
+  filterResultsByType(results, spotType) {
+    // Se non abbiamo un tipo specifico o non ci sono risultati, restituisci tutti i risultati
+    if (spotType === 'generic' || !results || results.length === 0) {
+      return results;
     }
     
-    return null;
+    console.log(`🔍 Filtering results for spot type: ${spotType}`);
+    
+    // Mapping tra tipi di luoghi e tipi di opere d'arte
+    const typeMapping = {
+      museum: ['painting', 'drawing', 'print', 'photograph', 'canvas', 'oil', 'watercolor'],
+      church: ['religious', 'painting', 'sculpture', 'altar', 'fresco', 'sacred'],
+      monument: ['sculpture', 'monument', 'statue', 'bronze', 'marble', 'stone'],
+      palace: ['painting', 'furniture', 'decorative', 'portrait', 'interior'],
+      archaeological: ['archaeological', 'ancient', 'artifact', 'ruin', 'roman', 'greek']
+    };
+    
+    const preferredTypes = typeMapping[spotType] || [];
+    
+    // Funzione per calcolare score di rilevanza per tipo
+    const getTypeRelevance = (result) => {
+      // Controlla department, classification, medium, tags
+      const metadata = [
+        result.department,
+        result.classification,
+        result.medium,
+        result.culture,
+        result.period,
+        result.title,
+        ...(Array.isArray(result.tags) 
+          ? result.tags.map(t => typeof t === 'string' ? t : (t.term || '')) 
+          : [])
+      ].filter(Boolean).join(' ').toLowerCase();
+      
+      // Calcola quanti tipi preferiti sono presenti nei metadati
+      return preferredTypes.reduce((score, type) => {
+        return score + (metadata.includes(type.toLowerCase()) ? 1 : 0);
+      }, 0);
+    };
+    
+    // Ordina per rilevanza di tipo e prendi i migliori
+    const scoredResults = [...results]
+      .map(result => ({
+        ...result,
+        typeRelevance: getTypeRelevance(result)
+      }))
+      .sort((a, b) => b.typeRelevance - a.typeRelevance);
+    
+    // Prendi almeno 3 risultati se disponibili, ma preferisci quelli con rilevanza > 0
+    const filteredResults = scoredResults
+      .filter(r => r.typeRelevance > 0)
+      .slice(0, Math.min(5, results.length));
+    
+    // Se non abbiamo abbastanza risultati rilevanti, aggiungi alcuni dei risultati originali
+    if (filteredResults.length < 3 && results.length > filteredResults.length) {
+      const remainingResults = scoredResults
+        .filter(r => r.typeRelevance === 0)
+        .slice(0, 3 - filteredResults.length);
+      
+      filteredResults.push(...remainingResults);
+    }
+    
+    console.log(`🔍 Filtered ${results.length} results to ${filteredResults.length} relevant for type ${spotType}`);
+    return filteredResults;
   }
-
-  // Estrae parole chiave rilevanti
-  extractKeywords(description) {
-    if (!description) return [];
-    
-    // Rimuovi parole comuni e estrai sostantivi significativi
-    const stopWords = new Set([
-      'il', 'la', 'di', 'da', 'in', 'con', 'su', 'per', 'tra', 'fra',
-      'the', 'of', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-      'è', 'sono', 'was', 'were', 'is', 'are', 'this', 'that', 'these', 'those',
-      'una', 'uno', 'del', 'della', 'dei', 'delle', 'nel', 'nella', 'nei', 'nelle'
-    ]);
-    
-    const words = description
-      .toLowerCase()
-      .replace(/[^\w\s]/g, ' ')
-      .split(/\s+/)
-      .filter(word => word.length > 3 && !stopWords.has(word));
-    
-    // Restituisce le parole più frequenti
-    const wordCount = {};
-    words.forEach(word => {
-      wordCount[word] = (wordCount[word] || 0) + 1;
-    });
-    
-    return Object.entries(wordCount)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 5)
-      .map(([word]) => word);
-  }
-
-  // Calcola score di matching tra spot e artwork
+  
+  /**
+   * Calcola score di matching tra uno spot e un'opera d'arte
+   * @param {Object} spot - Spot da matchare
+   * @param {Object} artwork - Opera d'arte
+   * @returns {number} - Score di matching (0-1)
+   */
   calculateMatchScore(spot, artwork) {
     let score = 0;
-    const config = this.matchingConfig;
     
-    // Score basato sul titolo
-    if (spot.name && artwork.title) {
-      const titleSimilarity = this.calculateStringSimilarity(
-        spot.name.toLowerCase(),
-        artwork.title.toLowerCase()
+    // Controlla corrispondenza artisti
+    if (spot.artists && Array.isArray(spot.artists) && artwork.artist) {
+      const artistMatch = spot.artists.some(artist => 
+        artwork.artist.toLowerCase().includes(artist.toLowerCase())
       );
-      score += titleSimilarity * config.titleWeight;
+      if (artistMatch) score += 0.4;
     }
     
-    // Score basato sull'artista
-    const spotArtist = this.extractArtistInfo(spot.description || '').artist;
-    if (spotArtist && artwork.artist) {
-      const artistSimilarity = this.calculateStringSimilarity(
-        spotArtist.toLowerCase(),
-        artwork.artist.toLowerCase()
-      );
-      score += artistSimilarity * config.artistWeight;
+    // Controlla corrispondenza periodo
+    if (spot.period && artwork.date) {
+      const periodMatch = artwork.date.toLowerCase().includes(spot.period.toLowerCase());
+      if (periodMatch) score += 0.3;
     }
     
-    // Score basato sul periodo
-    const spotPeriod = this.extractPeriodInfo(spot.description || '');
-    if (spotPeriod && (artwork.period || artwork.style)) {
-      const periodText = (artwork.period || artwork.style || '').toLowerCase();
-      if (periodText.includes(spotPeriod.toLowerCase())) {
-        score += config.periodWeight;
-      }
-    }
-    
-    // Score basato sul medium/tecnica
-    if (artwork.medium && spot.description) {
-      const mediumKeywords = ['painting', 'sculpture', 'drawing', 'print', 'photograph'];
-      const mediumLower = artwork.medium.toLowerCase();
-      const descriptionLower = spot.description.toLowerCase();
+    // Controlla corrispondenza titolo
+    if ((spot.name || spot.title) && artwork.title) {
+      const titleWords = (spot.name || spot.title).toLowerCase().split(' ');
+      const artworkTitle = artwork.title.toLowerCase();
       
-      for (const keyword of mediumKeywords) {
-        if (mediumLower.includes(keyword) && descriptionLower.includes(keyword)) {
-          score += config.mediumWeight;
-          break;
-        }
-      }
+      const titleMatch = titleWords.some(word => 
+        word.length > 3 && artworkTitle.includes(word)
+      );
+      if (titleMatch) score += 0.3;
     }
     
-    // Score basato su parole chiave
-    const spotKeywords = this.extractKeywords(spot.description || '');
-    const artworkText = `${artwork.title} ${artwork.artist} ${artwork.medium || ''} ${(artwork.tags || []).join(' ')}`.toLowerCase();
-    
-    let keywordMatches = 0;
-    spotKeywords.forEach(keyword => {
-      if (artworkText.includes(keyword.toLowerCase())) {
-        keywordMatches++;
-      }
-    });
-    
-    if (spotKeywords.length > 0) {
-      score += (keywordMatches / spotKeywords.length) * config.keywordWeight;
-    }
-    
-    // Bonus per immagini di alta qualità
-    if (artwork.primaryImage && artwork.isPublicDomain) {
-      score += 0.1;
-    }
-    
-    return Math.min(score, 1.0); // Normalizza tra 0 e 1
+    return Math.min(score, 1); // Max 1.0
   }
-
-  // Calcola similarità tra stringhe usando algoritmo di Levenshtein semplificato
-  calculateStringSimilarity(str1, str2) {
-    if (str1 === str2) return 1.0;
-    
-    const longer = str1.length > str2.length ? str1 : str2;
-    const shorter = str1.length > str2.length ? str2 : str1;
-    
-    if (longer.length === 0) return 1.0;
-    
-    // Calcola distanza di edit semplificata
-    const editDistance = this.levenshteinDistance(longer, shorter);
-    return (longer.length - editDistance) / longer.length;
-  }
-
-  levenshteinDistance(str1, str2) {
-    const matrix = [];
-    
-    for (let i = 0; i <= str2.length; i++) {
-      matrix[i] = [i];
-    }
-    
-    for (let j = 0; j <= str1.length; j++) {
-      matrix[0][j] = j;
-    }
-    
-    for (let i = 1; i <= str2.length; i++) {
-      for (let j = 1; j <= str1.length; j++) {
-        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1];
-        } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1,
-            matrix[i][j - 1] + 1,
-            matrix[i - 1][j] + 1
-          );
-        }
-      }
-    }
-    
-    return matrix[str2.length][str1.length];
-  }
-
-  // Rimuove duplicati basati su source + id
-  removeDuplicates(matches) {
-    const seen = new Set();
-    return matches.filter(match => {
-      const key = `${match.source}-${match.id}`;
-      if (seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
-  }
-
-  // Metodo per testare il matching su un singolo spot
-  async testMatching(spot, options = {}) {
-    console.log('Testing image matching for spot:', spot.name);
-    
-    const result = await this.enrichSingleSpot(spot, 5, ['met', 'aic']);
-    
-    console.log('Search queries used:', result.searchQueriesUsed);
-    console.log('Total matches found:', result.totalMatchesFound);
-    console.log('Selected images:', result.museumImages.length);
-    
-    result.museumImages.forEach((image, index) => {
-      console.log(`Image ${index + 1}:`, {
-        source: image.source,
-        title: image.title,
-        artist: image.artist,
-        score: image.matchScore,
-        query: image.searchQuery
-      });
-    });
-    
-    return result;
+  
+  /**
+   * Pulisce la cache
+   */
+  clearCache() {
+    this.typeCache.clear();
   }
 }
 
