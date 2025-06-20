@@ -22,12 +22,14 @@ const PROMPT_TEMPLATE = `
 Genera una lista di massimo 5 luoghi reali e verificabili a {PLACE} relativi a "{ACTIVITY}".
 
 IMPORTANTE:
-- Genera SOLO luoghi che esistono realmente e sono verificabili
+- Genera SOLO luoghi ed opere ( sculture, dipinti, architetture ) che esistono realmente e sono verificabili
 - Se non sei sicuro di un luogo, NON includerlo
-- Preferisci qualità a quantità (meglio 3 luoghi accurati che 5 approssimativi)
+- Preferisci qualità a quantità (meglio 4 luoghi accurati che 5 approssimativi)
 - NON inventare dettagli o informazioni
 
 Per ogni luogo, fornisci:
+- se il risultato è un luogo che contiene diverse opere d'arte, specifica il nome esatto delle opere inerenti alla ricerca ( che sia artista, periodo storico  o corrente artistica) contenute in tale luogo
+- se il risultato è un'opera d'arte, specifica il nome esatto dell'opera e il nome dell'artista
 - Nome esatto del luogo
 - Tipo specifico (museo, chiesa, monumento, scultura, palazzo, sito archeologico)
 - Coordinate GPS precise (se le conosci, altrimenti usa [0, 0])
@@ -39,7 +41,7 @@ Per ogni luogo, fornisci:
 Formatta i risultati come un array JSON con i seguenti campi per ogni spot:
   - title (nome esatto dello spot)
   - description (descrizione fattuale)
-  - type (tipo specifico: museo, chiesa, monumento, scultura, palazzo, sito archeologico)
+  - type (tipo specifico: museo, chiesa, monumento, scultura, dipinto, palazzo, sito archeologico)
   - coordinates (array [longitudine, latitudine])
   - address (indirizzo completo)
   - city (città)
@@ -66,7 +68,7 @@ export const aiGeneratedSpots = async ({place, activity}) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
+        model: 'gpt-4.1-nano-2025-04-14', //prima cera 3.5-turbo-
         messages: [SYSTEM_MESSAGE, {role: 'user', content: userPrompt}],
         temperature: 0.5, // Ridotto per risultati più deterministici e accurati
         max_tokens: 1000 // Aumentato per permettere risposte più dettagliate

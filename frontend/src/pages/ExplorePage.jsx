@@ -5,7 +5,7 @@ import MapPinList from '@/components/common/MapPinList';
 import { useGlobalState, useGlobalDispatch } from '@/context/GlobalState';
 
 const DEFAULT_PLACE = 'roma';
-const DEFAULT_ACTIVITY = 'arte';
+const DEFAULT_ACTIVITY = 'caravaggio';
 
 let lastFetchParams = { place: null, activity: null };
 
