@@ -56,13 +56,13 @@ class ImageMatchingService {
           artwork.artist
         );
         
-        // 2. Se Wikidata non trova risultati, SALTA Google CSE per ora (errore 403)
+        // 2. Se Wikidata non trova risultati, prova Google Custom Search
         if (artworkResults.length === 0) {
-          console.log(`🔄 Wikidata non ha trovato risultati, Google CSE temporaneamente disabilitato`);
-          // artworkResults = await googleCSEService.searchSpecificArtwork(
-          //   artwork.title, 
-          //   artwork.artist
-          // );
+          console.log(`🔄 Wikidata non ha trovato risultati, provando Google CSE...`);
+          artworkResults = await googleCSEService.searchSpecificArtwork(
+            artwork.title, 
+            artwork.artist
+          );
         }
         
         // Aggiungi metadati aggiuntivi ai risultati
@@ -140,9 +140,10 @@ class ImageMatchingService {
    * @param {Function} fallbackSearchFunction - Funzione di fallback per ricerca generica
    * @param {Object} wikiArtService - Istanza del servizio WikiArt
    * @param {Object} googleCSEService - Istanza del servizio Google CSE
+   * @param {Object} googlePlacesService - Istanza del servizio Google Places
    * @returns {Promise<Array>} - Array di immagini trovate
    */
-  async enrichSpotWithImages(spot, originalQuery, place, fallbackSearchFunction, wikiArtService, googleCSEService) {
+  async enrichSpotWithImages(spot, originalQuery, place, fallbackSearchFunction, wikiArtService, googleCSEService, googlePlacesService) {
     console.log(`🎨 Arricchendo spot: ${spot.title || spot.name}`);
     
     // PRIORITÀ 1: Cerca opere specifiche se disponibili
@@ -158,7 +159,27 @@ class ImageMatchingService {
       }
     }
     
-    // PRIORITÀ 2: Fallback a ricerca generica (metodo esistente)
+    // PRIORITÀ 2: NUOVO - Usa Google Places per monumenti/luoghi senza opere
+    if (googlePlacesService && this.isMonumentOrPlace(spot)) {
+      console.log(`🏛️ Usando Google Places per monumento/luogo: ${spot.title || spot.name}`);
+      
+      try {
+        const placesResults = await googlePlacesService.searchPlaces(spot.title || spot.name, place, 'tourist_attraction');
+        
+        if (placesResults.length > 0) {
+          const placeImages = googlePlacesService.convertToMuseumFormat(placesResults);
+          
+          if (placeImages.length > 0) {
+            console.log(`✅ Trovate ${placeImages.length} immagini Google Places per: ${spot.title || spot.name}`);
+            return placeImages.slice(0, 5);
+          }
+        }
+      } catch (error) {
+        console.error(`❌ Errore Google Places per ${spot.title || spot.name}:`, error.message);
+      }
+    }
+    
+    // PRIORITÀ 3: Fallback a ricerca generica (metodo esistente)
     if (fallbackSearchFunction) {
       console.log(`🔄 Usando ricerca generica per: ${spot.title || spot.name}`);
       
@@ -432,6 +453,63 @@ class ImageMatchingService {
   async testSpecificArtworkMatching() {
     console.log('🧪 Testando sistema matching opere specifiche...');
     return true; // Per ora sempre true
+  }
+  
+  /**
+   * NUOVO: Determina se uno spot è un monumento o luogo che necessita foto reali
+   * @param {Object} spot - Spot da verificare
+   * @returns {boolean} - True se è un monumento/luogo
+   */
+  isMonumentOrPlace(spot) {
+    const type = (spot.type || '').toLowerCase();
+    const monumentTypes = [
+      'monumento',
+      'sito archeologico', 
+      'tempio',
+      'palazzo',
+      'fortezza',
+      'arco',
+      'fontana',
+      'piazza',
+      'ponte',
+      'villa',
+      'giardino',
+      'parco',
+      'anfiteatro',
+      'teatro',
+      'terme',
+      'acquedotto',
+      'mausoleo',
+      'basilica civile', // diverso da basilica religiosa
+      'foro',
+      'circo',
+      'stadio'
+    ];
+    
+    // Controlla se il tipo contiene una delle parole chiave
+    const isMonument = monumentTypes.some(monumentType => 
+      type.includes(monumentType)
+    );
+    
+    // Esclude musei e chiese che potrebbero avere opere specifiche
+    const isMuseumOrChurch = type.includes('museo') || 
+                            type.includes('chiesa') || 
+                            type.includes('cattedrale') ||
+                            type.includes('basilica');
+    
+    // È un monumento SE è nella lista E non è museo/chiesa
+    // OPPURE se è museo/chiesa MA non ha opere specifiche
+    const hasArtworks = spot.artworks && Array.isArray(spot.artworks) && spot.artworks.length > 0;
+    
+    if (isMonument && !isMuseumOrChurch) {
+      return true; // Monumento puro (Colosseo, Pantheon, etc.)
+    }
+    
+    if (isMuseumOrChurch && !hasArtworks) {
+      return true; // Museo/chiesa senza opere specifiche
+    }
+    
+    return false;
   }
   
   /**

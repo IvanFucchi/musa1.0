@@ -7,6 +7,7 @@ import MuseumApiService from '../utils/museumApiService.js';
 import ImageMatchingService from '../utils/imageMatchingService.js';
 import WikiArtService from '../utils/wikiArtService.js';
 import GoogleCustomSearchService from '../utils/googleCustomSearchService.js';
+import GooglePlacesService from '../utils/googlePlacesService.js';
 
 const router = express.Router();
 
@@ -15,13 +16,14 @@ const museumApiService = new MuseumApiService();
 const imageMatchingService = new ImageMatchingService();
 const wikiArtService = new WikiArtService();
 const googleCSEService = new GoogleCustomSearchService();
+const googlePlacesService = new GooglePlacesService();
 
 // Configurazione ottimizzazioni aggressive ma sicure
 const OPTIMIZATION_CONFIG = {
   maxSpotsToProcess: 6,        // Ridotto per velocità
   maxImagesPerSpot: 4,         // Ridotto per velocità
-  apiTimeoutMs: 10000,          // Molto più aggressivo
-  totalTimeoutMs: 15000,        // Molto più aggressivo
+  apiTimeoutMs: 3000,          // Molto più aggressivo
+  totalTimeoutMs: 30000,       // AUMENTATO da 8s a 30s
   parallelBatchSize: 3,        // Ridotto per stabilità
   rateLimitDelayMs: 50         // Ridotto per velocità
 };
@@ -59,7 +61,8 @@ const enrichSpotWithImages = async (spot, originalQuery, place) => {
       place, 
       searchGenericMuseumImages, // Funzione di fallback
       wikiArtService, // Istanza WikiArt
-      googleCSEService // Istanza Google CSE
+      googleCSEService, // Istanza Google CSE
+      googlePlacesService // Istanza Google Places
     );
     
     if (images && images.length > 0) {

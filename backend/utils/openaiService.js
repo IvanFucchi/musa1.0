@@ -102,7 +102,20 @@ export const aiGeneratedSpots = async ({place, activity}) => {
   const clean = raw.replace(/```json|```/g, '');
 
   try {
-    const spots = JSON.parse(clean);
+    // NUOVO: Pulisci JSON malformato prima del parsing
+    let cleanedJson = clean;
+    
+    // Rimuovi parentesi extra che causano errori di parsing
+    cleanedJson = cleanedJson.replace(/,\s*\)/g, ''); // Rimuove ", )" 
+    cleanedJson = cleanedJson.replace(/\)\s*]/g, ']'); // Rimuove ") ]"
+    cleanedJson = cleanedJson.replace(/\)\s*}/g, '}'); // Rimuove ") }"
+    
+    // Rimuovi commenti che causano errori
+    cleanedJson = cleanedJson.replace(/\/\/.*$/gm, ''); // Rimuove commenti //
+    
+    console.log('🧹 JSON cleaned for parsing');
+    
+    const spots = JSON.parse(cleanedJson);
     
     // Validazione e pulizia dei risultati
     const validatedSpots = spots.map(spot => ({
