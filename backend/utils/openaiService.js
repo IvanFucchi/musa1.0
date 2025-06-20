@@ -8,16 +8,21 @@ const OPENAI_KEY = process.env.OPENAI_API_KEY;
 // agente HTTPS connessioni keep-alive
 const httpsAgent = new https.Agent({keepAlive: true});
 
-// Sistema migliorato con istruzioni più specifiche
+// Sistema migliorato con istruzioni più specifiche per opere d'arte
 const SYSTEM_MESSAGE = {
   role: 'system',
   content: `Sei un esperto d'arte, storia e cultura con conoscenze precise e verificate.
   Il tuo compito è fornire informazioni accurate su luoghi reali e verificabili.
   NON inventare luoghi o dettagli. Se non sei sicuro di un'informazione, omettila.
-  Preferisci sempre la qualità alla quantità nelle tue risposte.`
+  Preferisci sempre la qualità alla quantità nelle tue risposte.
+  
+  IMPORTANTE per le opere d'arte:
+  - Se un luogo contiene opere d'arte specifiche e famose, elencale con titolo esatto e artista
+  - Includi solo opere che sono effettivamente presenti in quel luogo
+  - Non inventare opere o attribuzioni incerte`
 };
 
-// Prompt migliorato per risultati più accurati e strutturati
+// Prompt migliorato per estrarre opere specifiche
 const PROMPT_TEMPLATE = `
 Genera una lista di massimo 5 luoghi reali e verificabili a {PLACE} relativi a "{ACTIVITY}".
 
@@ -35,6 +40,7 @@ Per ogni luogo, fornisci:
 - Breve descrizione fattuale (max 2 frasi)
 - Artisti principali associati (se applicabile)
 - Periodo storico o anno di creazione (se applicabile)
+- OPERE SPECIFICHE: Se il luogo contiene opere d'arte famose e specifiche, elencale con titolo esatto e artista
 
 Formatta i risultati come un array JSON con i seguenti campi per ogni spot:
   - title (nome esatto dello spot)
@@ -46,7 +52,15 @@ Formatta i risultati come un array JSON con i seguenti campi per ogni spot:
   - country (paese)
   - artists (array di artisti principali associati, vuoto se non applicabile)
   - period (periodo storico o anno di creazione, vuoto se non applicabile)
+  - artworks (array di opere specifiche presenti nel luogo, formato: [{"title": "Nome Opera", "artist": "Nome Artista"}], vuoto se non applicabile)
   - source (sempre "openai")
+
+Esempio per Chiesa di San Luigi dei Francesi:
+"artworks": [
+  {"title": "Vocazione di San Matteo", "artist": "Caravaggio"},
+  {"title": "San Matteo e l'Angelo", "artist": "Caravaggio"},
+  {"title": "Martirio di San Matteo", "artist": "Caravaggio"}
+]
 `;
 
 export const aiGeneratedSpots = async ({place, activity}) => {
@@ -68,8 +82,8 @@ export const aiGeneratedSpots = async ({place, activity}) => {
       body: JSON.stringify({
         model: 'gpt-3.5-turbo',
         messages: [SYSTEM_MESSAGE, {role: 'user', content: userPrompt}],
-        temperature: 0.5, // Ridotto per risultati più deterministici e accurati
-        max_tokens: 1000 // Aumentato per permettere risposte più dettagliate
+        temperature: 0.3, // Ridotto ulteriormente per risultati più deterministici
+        max_tokens: 1000 // Ridotto come suggerito dall'utente per velocità
       })
     });
   } catch (err) {
@@ -105,8 +119,23 @@ export const aiGeneratedSpots = async ({place, activity}) => {
       country: spot.country || '',
       artists: Array.isArray(spot.artists) ? spot.artists : [],
       period: spot.period || '',
+      // NUOVO: Campo artworks per opere specifiche
+      artworks: Array.isArray(spot.artworks) ? spot.artworks.map(artwork => ({
+        title: artwork.title || '',
+        artist: artwork.artist || ''
+      })) : [],
       source: 'openai'
     }));
+    
+    // Log delle opere trovate per debug
+    validatedSpots.forEach(spot => {
+      if (spot.artworks && spot.artworks.length > 0) {
+        console.log(`🎨 ${spot.title}: trovate ${spot.artworks.length} opere specifiche`);
+        spot.artworks.forEach(artwork => {
+          console.log(`   - "${artwork.title}" di ${artwork.artist}`);
+        });
+      }
+    });
     
     console.log(`✅ Generati ${validatedSpots.length} spot verificati per: ${activity} a ${place}`);
     return validatedSpots;

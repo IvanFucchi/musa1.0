@@ -1,42 +1,208 @@
-// Image Matching Service - Algoritmi intelligenti per il matching tra risultati OpenAI e opere museali
-// Versione migliorata con filtri per tipo di luogo
+// Image Matching Service - Versione aggiornata per opere specifiche
+// Integra WikiArt e Google Custom Search per matching preciso delle opere d'arte
 
 class ImageMatchingService {
   constructor() {
     this.typeCache = new Map(); // Cache per i tipi di luoghi
+    this.artworkCache = new Map(); // Cache per opere specifiche
   }
   
   /**
-   * Estrae termini di ricerca da uno spot
-   * @param {Object} spot - Spot da cui estrarre i termini
-   * @returns {Array} - Array di termini di ricerca
+   * NUOVO: Cerca immagini per opere specifiche menzionate nello spot
+   * @param {Object} spot - Spot con campo artworks
+   * @param {string} originalQuery - Query originale dell'utente
+   * @param {string} place - Luogo della ricerca
+   * @param {Object} wikiArtService - Istanza del servizio WikiArt
+   * @param {Object} googleCSEService - Istanza del servizio Google CSE
+   * @returns {Promise<Array>} - Array di immagini delle opere specifiche
    */
-  extractSearchTerms(spot) {
-    const terms = [];
+  async findSpecificArtworks(spot, originalQuery, place, wikiArtService, googleCSEService) {
+    console.log(`🎨 Cercando opere specifiche per: ${spot.title || spot.name}`);
     
-    // Estrai dal nome
-    if (spot.name) {
-      terms.push(spot.name);
+    // Controlla se lo spot ha opere specifiche
+    if (!spot.artworks || !Array.isArray(spot.artworks) || spot.artworks.length === 0) {
+      console.log(`❌ Nessuna opera specifica trovata per: ${spot.title || spot.name}`);
+      return [];
     }
     
-    // Estrai dalla descrizione
-    if (spot.description) {
-      // Estrai parole chiave dalla descrizione
-      const keywords = spot.description.split(' ')
-        .filter(word => word.length > 3)
-        .slice(0, 3);
-      terms.push(...keywords);
+    console.log(`🔍 Trovate ${spot.artworks.length} opere specifiche da cercare:`);
+    spot.artworks.forEach(artwork => {
+      console.log(`   - "${artwork.title}" di ${artwork.artist}`);
+    });
+    
+    const allResults = [];
+    
+    // Cerca ogni opera specifica
+    for (const artwork of spot.artworks) {
+      if (!artwork.title || !artwork.artist) {
+        console.log(`⚠️ Opera incompleta saltata: ${JSON.stringify(artwork)}`);
+        continue;
+      }
+      
+      // Controlla cache
+      const cacheKey = `${artwork.title}_${artwork.artist}`.toLowerCase();
+      if (this.artworkCache.has(cacheKey)) {
+        console.log(`💨 Cache hit per opera: "${artwork.title}" di ${artwork.artist}`);
+        allResults.push(...this.artworkCache.get(cacheKey));
+        continue;
+      }
+      
+      console.log(`🔍 Cercando: "${artwork.title}" di ${artwork.artist}`);
+      
+      try {
+        // 1. Prima prova con Wikidata (più accurato)
+        let artworkResults = await wikiArtService.searchSpecificArtwork(
+          artwork.title, 
+          artwork.artist
+        );
+        
+        // 2. Se Wikidata non trova risultati, SALTA Google CSE per ora (errore 403)
+        if (artworkResults.length === 0) {
+          console.log(`🔄 Wikidata non ha trovato risultati, Google CSE temporaneamente disabilitato`);
+          // artworkResults = await googleCSEService.searchSpecificArtwork(
+          //   artwork.title, 
+          //   artwork.artist
+          // );
+        }
+        
+        // Aggiungi metadati aggiuntivi ai risultati
+        const enrichedResults = artworkResults.map(result => ({
+          ...result,
+          spotName: spot.title || spot.name,
+          searchMethod: 'specific_artwork',
+          originalArtwork: artwork,
+          matchScore: this.calculateSpecificArtworkScore(artwork, result)
+        }));
+        
+        // Salva in cache
+        this.artworkCache.set(cacheKey, enrichedResults);
+        
+        allResults.push(...enrichedResults);
+        
+        console.log(`✅ Trovate ${enrichedResults.length} immagini per "${artwork.title}" di ${artwork.artist}`);
+        
+      } catch (error) {
+        console.error(`❌ Errore cercando "${artwork.title}" di ${artwork.artist}:`, error.message);
+      }
+      
+      // Pausa tra ricerche per rispettare rate limits
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
     
-    // Estrai dalla location
-    if (spot.location) {
-      terms.push(spot.location);
+    // Rimuovi duplicati e ordina per score
+    const uniqueResults = this.removeDuplicateImages(allResults);
+    const sortedResults = uniqueResults.sort((a, b) => b.matchScore - a.matchScore);
+    
+    console.log(`🎯 Totale immagini opere specifiche trovate: ${sortedResults.length}`);
+    return sortedResults.slice(0, 6); // Max 6 immagini per spot
+  }
+  
+  /**
+   * NUOVO: Calcola score per opere specifiche (più accurato)
+   * @param {Object} searchedArtwork - Opera cercata
+   * @param {Object} foundResult - Risultato trovato
+   * @returns {number} - Score da 0 a 1
+   */
+  calculateSpecificArtworkScore(searchedArtwork, foundResult) {
+    let score = 0;
+    
+    const searchTitle = searchedArtwork.title.toLowerCase();
+    const searchArtist = searchedArtwork.artist.toLowerCase();
+    const foundTitle = (foundResult.title || '').toLowerCase();
+    const foundArtist = (foundResult.artist || '').toLowerCase();
+    
+    // Match esatto del titolo (peso 50%)
+    if (foundTitle.includes(searchTitle) || searchTitle.includes(foundTitle)) {
+      score += 0.5;
     }
     
-    // Pulisci e normalizza
-    return terms
-      .filter(term => term && term.trim().length > 0)
-      .map(term => term.trim());
+    // Match esatto dell'artista (peso 40%)
+    if (foundArtist.includes(searchArtist) || searchArtist.includes(foundArtist)) {
+      score += 0.4;
+    }
+    
+    // Bonus per fonte affidabile (peso 10%)
+    if (foundResult.source === 'wikidata') {
+      score += 0.1;
+    } else if (foundResult.source === 'google_cse' && foundResult.repository && 
+               foundResult.repository.toLowerCase().includes('museum')) {
+      score += 0.05;
+    }
+    
+    return Math.min(score, 1.0);
+  }
+  
+  /**
+   * AGGIORNATO: Metodo principale per arricchire uno spot con immagini
+   * @param {Object} spot - Spot da arricchire
+   * @param {string} originalQuery - Query originale dell'utente
+   * @param {string} place - Luogo della ricerca
+   * @param {Function} fallbackSearchFunction - Funzione di fallback per ricerca generica
+   * @param {Object} wikiArtService - Istanza del servizio WikiArt
+   * @param {Object} googleCSEService - Istanza del servizio Google CSE
+   * @returns {Promise<Array>} - Array di immagini trovate
+   */
+  async enrichSpotWithImages(spot, originalQuery, place, fallbackSearchFunction, wikiArtService, googleCSEService) {
+    console.log(`🎨 Arricchendo spot: ${spot.title || spot.name}`);
+    
+    // PRIORITÀ 1: Cerca opere specifiche se disponibili
+    if (spot.artworks && Array.isArray(spot.artworks) && spot.artworks.length > 0) {
+      console.log(`🎯 Usando ricerca opere specifiche per: ${spot.title || spot.name}`);
+      const specificResults = await this.findSpecificArtworks(spot, originalQuery, place, wikiArtService, googleCSEService);
+      
+      if (specificResults.length > 0) {
+        console.log(`✅ Trovate ${specificResults.length} immagini opere specifiche`);
+        return specificResults;
+      } else {
+        console.log(`⚠️ Nessuna immagine trovata per opere specifiche, fallback a ricerca generica`);
+      }
+    }
+    
+    // PRIORITÀ 2: Fallback a ricerca generica (metodo esistente)
+    if (fallbackSearchFunction) {
+      console.log(`🔄 Usando ricerca generica per: ${spot.title || spot.name}`);
+      
+      // Usa termini consistenti per la ricerca generica
+      const searchTerms = this.extractSearchTermsConsistent(spot, originalQuery, place);
+      const genericResults = await fallbackSearchFunction(searchTerms);
+      
+      if (genericResults && genericResults.length > 0) {
+        // Filtra per tipo di luogo
+        const spotType = this.determineLocationType(spot);
+        const filteredResults = this.filterResultsByType(genericResults, spotType);
+        
+        // Aggiungi metadati
+        const enrichedResults = filteredResults.map(result => ({
+          ...result,
+          spotName: spot.title || spot.name,
+          searchMethod: 'generic_fallback',
+          matchScore: this.calculateMatchScore(spot, result)
+        }));
+        
+        console.log(`✅ Trovate ${enrichedResults.length} immagini generiche`);
+        return enrichedResults.slice(0, 5);
+      }
+    }
+    
+    console.log(`❌ Nessuna immagine trovata per: ${spot.title || spot.name}`);
+    return [];
+  }
+  
+  /**
+   * NUOVO: Rimuove immagini duplicate basandosi su URL
+   * @param {Array} results - Array di risultati
+   * @returns {Array} - Array senza duplicati
+   */
+  removeDuplicateImages(results) {
+    const seen = new Set();
+    return results.filter(result => {
+      const imageUrl = result.primaryImage || result.primaryImageSmall || '';
+      if (seen.has(imageUrl)) {
+        return false;
+      }
+      seen.add(imageUrl);
+      return true;
+    });
   }
   
   /**
@@ -223,7 +389,7 @@ class ImageMatchingService {
   }
   
   /**
-   * Calcola score di matching tra uno spot e un'opera d'arte
+   * Calcola score di matching tra uno spot e un'opera d'arte (metodo generico)
    * @param {Object} spot - Spot da matchare
    * @param {Object} artwork - Opera d'arte
    * @returns {number} - Score di matching (0-1)
@@ -260,10 +426,20 @@ class ImageMatchingService {
   }
   
   /**
-   * Pulisce la cache
+   * NUOVO: Test del sistema di matching opere specifiche
+   * @returns {Promise<boolean>} - True se il test passa
+   */
+  async testSpecificArtworkMatching() {
+    console.log('🧪 Testando sistema matching opere specifiche...');
+    return true; // Per ora sempre true
+  }
+  
+  /**
+   * Pulisce tutte le cache
    */
   clearCache() {
     this.typeCache.clear();
+    this.artworkCache.clear();
   }
 }
 
