@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
-import axios from 'axios';
+import api from '../lib/api';  // ✅ CAMBIATO: Usa api configurato invece di axios
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Alert from '../components/ui/Alert';
@@ -89,7 +89,8 @@ const PendingContentTab = () => {
   const fetchPendingContent = async () => {
     try {
       setLoading(true);
-      const { data } = await axios.get('http://localhost:5000/api/ugc/pending');
+      // ✅ CAMBIATO: Usa api configurato e URL relativo
+      const { data } = await api.get('/api/ugc/pending');
 
       if (data.success) {
         setPendingContent(data.data);
@@ -105,7 +106,8 @@ const PendingContentTab = () => {
 
   const handleApprove = async (id) => {
     try {
-      const { data } = await axios.put(`http://localhost:5000/api/ugc/${id}/approve`);
+      // ✅ CAMBIATO: Usa api configurato e URL relativo
+      const { data } = await api.put(`/api/ugc/${id}/approve`);
 
       if (data.success) {
         setPendingContent(prev => prev.filter(item => item._id !== id));
@@ -123,7 +125,8 @@ const PendingContentTab = () => {
 
   const handleReject = async (id) => {
     try {
-      const { data } = await axios.delete(`http://localhost:5000/api/ugc/${id}`);
+      // ✅ CAMBIATO: Usa api configurato e URL relativo
+      const { data } = await api.delete(`/api/ugc/${id}`);
 
       if (data.success) {
         setPendingContent(prev => prev.filter(item => item._id !== id));
@@ -281,3 +284,4 @@ const UsersManagementTab = () => {
 };
 
 export default AdminDashboardPage;
+
