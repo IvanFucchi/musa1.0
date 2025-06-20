@@ -22,8 +22,8 @@ const googlePlacesService = new GooglePlacesService();
 const OPTIMIZATION_CONFIG = {
   maxSpotsToProcess: 6,        // Ridotto per velocità
   maxImagesPerSpot: 4,         // Ridotto per velocità
-  apiTimeoutMs: 3000,          // Molto più aggressivo
-  totalTimeoutMs: 30000,       // AUMENTATO da 8s a 30s
+  apiTimeoutMs: 8000,          // AUMENTATO da 3s a 8s per Google CSE
+  totalTimeoutMs: 45000,       // AUMENTATO da 30s a 45s per opere specifiche
   parallelBatchSize: 3,        // Ridotto per stabilità
   rateLimitDelayMs: 50         // Ridotto per velocità
 };
